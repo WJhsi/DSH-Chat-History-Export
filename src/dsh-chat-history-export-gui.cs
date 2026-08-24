@@ -860,8 +860,12 @@ namespace DshChatHistoryExport
         {
             Text = Lang.T("title");
             Font = new Font("Microsoft YaHei UI", 9.5f);
-            ClientSize = new Size(1280, 720);
-            MinimumSize = new Size(1024, 600);
+            // 默认窗口按屏幕自适应放大（目标 1440x840，不超过工作区）
+            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            int defW = Math.Min(1440, Math.Max(1024, wa.Width - 80));
+            int defH = Math.Min(840, Math.Max(600, wa.Height - 80));
+            ClientSize = new Size(defW, defH);
+            MinimumSize = new Size(Math.Min(1100, defW), Math.Min(640, defH));
             StartPosition = FormStartPosition.CenterScreen;
 
             TableLayoutPanel root = new TableLayoutPanel();
@@ -920,6 +924,7 @@ namespace DshChatHistoryExport
 
             SplitContainer split = new SplitContainer();
             split.Dock = DockStyle.Fill;
+            split.FixedPanel = FixedPanel.Panel1; // 左侧列表固定宽度，右侧预览随窗口宽度自适应拉伸
             split.SplitterDistance = 640;
             split.Panel1MinSize = 480;
 
