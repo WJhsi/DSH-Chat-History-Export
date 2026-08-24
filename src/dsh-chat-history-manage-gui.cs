@@ -739,6 +739,15 @@ namespace DshChatHistoryManage
             public int Height;
             public int HeaderHeight; // 工具块头部行高（可点击区域）
             public int DetailHeight; // 工具块细节行高（展开时显示）
+            public List<List<Word>> BoldLines; // 含 **粗体** 时的逐行词布局（null 表示无粗体，走普通绘制）
+            public bool HasBold;     // 文本是否含 ** 标记
+        }
+
+        private class Word
+        {
+            public string Text;
+            public Font Font;    // 已解析粗体后的字体
+            public float Width;  // 测量宽度
         }
 
         private List<Block> blocks = new List<Block>();
@@ -749,6 +758,7 @@ namespace DshChatHistoryManage
         private const int PadX = 10;
         private const int MaxBlockChars = 6000; // 显示截断上限：限制 CJK 换行布局成本
         private Font fBase, fHead, fToolHead, fToolDetail;
+        private Font fBaseBold, fHeadBold, fToolDetailBold; // 行内粗体变体
 
         public PreviewView()
         {
@@ -759,6 +769,9 @@ namespace DshChatHistoryManage
             fBase = new Font("Microsoft YaHei UI", 9.5f);                 // 微软雅黑：正文
             fToolHead = new Font("Microsoft YaHei UI", 9f, FontStyle.Italic);
             fToolDetail = new Font("Microsoft YaHei UI", 8.5f);
+            fBaseBold = new Font(fBase, FontStyle.Bold);
+            fHeadBold = new Font(fHead, FontStyle.Bold);
+            fToolDetailBold = new Font(fToolDetail, FontStyle.Bold);
         }
 
         /// <summary>displayMd 用于显示（可能截断），fullMd 是完整转录（供复制）。</summary>
@@ -874,6 +887,7 @@ namespace DshChatHistoryManage
             b.Color = color;
             b.Font = font;
             b.UseGdi = HasSurrogateEmoji(text); // 含 emoji 的块用 GDI 绘制保真字形
+            b.HasBold = text != null && text.Contains("**"); // 含 ** 粗体标记 → 行内粗体布局
             return b;
         }
 
@@ -916,11 +930,17 @@ namespace DshChatHistoryManage
                         if (b.Kind == BlockKind.Tool)
                         {
                             b.HeaderHeight = MeasureH(g, (b.Collapsed ? "▶ " : "▼ ") + b.Header, fToolHead, w);
-                            b.DetailHeight = MeasureH(g, b.Text, fToolDetail, w);
+                            if (b.HasBold)
+                                b.DetailHeight = BuildBoldLines(g, b, b.Text, fToolDetail, w - 12);
+                            else
+                                b.DetailHeight = MeasureH(g, b.Text, fToolDetail, w - 12);
                         }
                         else
                         {
-                            b.Height = MeasureH(g, b.Text, b.Font, w);
+                            if (b.HasBold)
+                                b.Height = BuildBoldLines(g, b, b.Text, b.Font, w);
+                            else
+                                b.Height = MeasureH(g, b.Text, b.Font, w);
                         }
                     }
                 }
@@ -943,6 +963,114 @@ namespace DshChatHistoryManage
             return (int)Math.Ceiling(sz.Height) + 10; // +10 安全边距
         }
 
+        // ---------- 行内粗体：解析 **xxx**，按词换行成行 ----------
+        private Font BoldOf(Font f)
+        {
+            if (f == fBase) return fBaseBold;
+            if (f == fHead) return fHeadBold;
+            if (f == fToolDetail) return fToolDetailBold;
+            return new Font(f, FontStyle.Bold);
+        }
+
+        /// <summary>把含 **粗体** 的文本按词换行成行并测量总高度，结果缓存在块上。</summary>
+        private int BuildBoldLines(Graphics g, Block b, string text, Font baseFont, int width)
+        {
+            b.BoldLines = new List<List<Word>>();
+            if (string.IsNullOrEmpty(text)) { b.BoldLines.Add(new List<Word>()); return baseFont.Height + 10; }
+            // 1) 按 ** 拆段，奇数段为粗体
+            List<KeyValuePair<string, bool>> segs = new List<KeyValuePair<string, bool>>();
+            bool bold = false;
+            StringBuilder cur = new StringBuilder();
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (i + 1 < text.Length && text[i] == '*' && text[i + 1] == '*')
+                {
+                    if (cur.Length > 0) { segs.Add(new KeyValuePair<string, bool>(cur.ToString(), bold)); cur.Length = 0; }
+                    bold = !bold;
+                    i++;
+                }
+                else cur.Append(text[i]);
+            }
+            if (cur.Length > 0) segs.Add(new KeyValuePair<string, bool>(cur.ToString(), bold));
+            // 2) 拆词并测量宽度
+            List<Word> words = new List<Word>();
+            foreach (KeyValuePair<string, bool> seg in segs)
+            {
+                Font f = seg.Value ? BoldOf(baseFont) : baseFont;
+                string[] parts = seg.Key.Split(' ');
+                for (int j = 0; j < parts.Length; j++)
+                {
+                    if (parts[j].Length == 0) continue;
+                    Word wd = new Word();
+                    wd.Text = parts[j];
+                    wd.Font = f;
+                    wd.Width = g.MeasureString(wd.Text, f).Width;
+                    words.Add(wd);
+                }
+            }
+            // 3) 贪心换行；超宽词按字符拆
+            float spaceW = g.MeasureString(" ", baseFont).Width;
+            List<Word> line = new List<Word>();
+            float lineW = 0f;
+            for (int i = 0; i < words.Count; i++)
+            {
+                Word wd = words[i];
+                if (wd.Width > width)
+                {
+                    // 超宽词（长英文/长中文无空格）拆成字符逐字排
+                    foreach (char ch in wd.Text)
+                    {
+                        Word cw = new Word();
+                        cw.Text = ch.ToString();
+                        cw.Font = wd.Font;
+                        cw.Width = g.MeasureString(cw.Text, wd.Font).Width;
+                        float need = (line.Count == 0 ? 0 : spaceW) + cw.Width;
+                        if (line.Count > 0 && lineW + need > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
+                        line.Add(cw);
+                        lineW += need;
+                    }
+                    continue;
+                }
+                float need2 = (line.Count == 0 ? 0 : spaceW) + wd.Width;
+                if (line.Count > 0 && lineW + need2 > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
+                line.Add(wd);
+                lineW += need2;
+            }
+            if (line.Count > 0) b.BoldLines.Add(line);
+            if (b.BoldLines.Count == 0) b.BoldLines.Add(new List<Word>());
+            return b.BoldLines.Count * (baseFont.Height + 2) + 10;
+        }
+
+        private void DrawBoldLines(Graphics g, Block b, int x0, int y0, Color color, bool useGdi)
+        {
+            float spaceW = g.MeasureString(" ", b.Font).Width;
+            int lineH = b.Font.Height + 2;
+            int y = y0;
+            foreach (List<Word> line in b.BoldLines)
+            {
+                float x = x0;
+                foreach (Word wd in line)
+                {
+                    DrawWord(g, wd.Text, wd.Font, x, y, color, useGdi);
+                    x += wd.Width + spaceW;
+                }
+                y += lineH;
+            }
+        }
+
+        private static void DrawWord(Graphics g, string text, Font font, float x, float y, Color color, bool useGdi)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            if (useGdi)
+                TextRenderer.DrawText(g, text, font, new Point((int)x, (int)y), color,
+                    TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            else
+            {
+                using (SolidBrush brush = new SolidBrush(color))
+                    g.DrawString(text, font, brush, x, y);
+            }
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(BackColor);
@@ -961,12 +1089,18 @@ namespace DshChatHistoryManage
                     DrawBlock(g, head, fToolHead, new RectangleF(PadX, by, layoutWidth, b.HeaderHeight), b.Color, b.UseGdi);
                     if (!b.Collapsed)
                     {
-                        DrawBlock(g, b.Text, fToolDetail, new RectangleF(PadX + 12, by + b.HeaderHeight, layoutWidth - 12, b.DetailHeight), b.Color, b.UseGdi);
+                        if (b.HasBold && b.BoldLines != null)
+                            DrawBoldLines(g, b, PadX + 12, by + b.HeaderHeight, b.Color, b.UseGdi);
+                        else
+                            DrawBlock(g, b.Text, fToolDetail, new RectangleF(PadX + 12, by + b.HeaderHeight, layoutWidth - 12, b.DetailHeight), b.Color, b.UseGdi);
                     }
                 }
                 else
                 {
-                    DrawBlock(g, b.Text, b.Font, new RectangleF(PadX, by, layoutWidth, b.Height), b.Color, b.UseGdi);
+                    if (b.HasBold && b.BoldLines != null)
+                        DrawBoldLines(g, b, PadX, by, b.Color, b.UseGdi);
+                    else
+                        DrawBlock(g, b.Text, b.Font, new RectangleF(PadX, by, layoutWidth, b.Height), b.Color, b.UseGdi);
                 }
             }
         }
