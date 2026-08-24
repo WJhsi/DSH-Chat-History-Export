@@ -39,21 +39,6 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 
 After changing the UI/logic, recompile — the artifact lands in `dist\`.
 
-## Directory Layout
-
-```
-recover\
-├── build.cmd                           one-click build script
-├── sea-config.json                     node SEA packaging config for the CLI variant (standby)
-├── src\
-│   ├── dsh-chat-history-manage-gui.cs  WinForms GUI source (main program)
-│   └── dsh-chat-history-manage.cjs     CLI variant source (node, standby)
-├── native\
-│   └── libzstd.dll                     zstd library (embedded into the exe at build time)
-└── dist\
-    └── dsh-chat-history-manage.exe     build artifact (ready to run)
-```
-
 ## Notes
 
 - `dsh-chat-history-manage.config.json` is a machine-local runtime config (export directory); it is not distributed with the program.
