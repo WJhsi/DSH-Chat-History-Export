@@ -598,14 +598,16 @@ namespace DshChatHistoryManage
 
         static Lang()
         {
-            Languages.Add(new Language("zh", "简体中文", Zh));
+            Languages.Add(new Language("zh", "中文（简体）", Zh));
             Languages.Add(new Language("en", "English", En));
             // CoreKeys 顺序：title, menuFile, menuEdit, menuLang, menuHelp, about, aboutOk,
             //             dirLabel, browse, openDir, refresh, pick, exportBtn,
             //             colTopic, colId, colTime,
             //             statusReady, statusLoaded, statusReading, statusLoading,
             //             msgInfo, msgError, msgExportDone, linkGithub
-            Add("zh-TW", "繁體中文", "DSH Chat-History Manage — 聊天記錄管理工具", "檔案", "編輯", "語言", "說明", "關於", "確定", "匯出目錄:", "瀏覽…", "開啟資料夾", "重新整理", "選擇工作階段檔…", "匯出並儲存", "主題", "工作階段 ID", "時間", "就緒", "已載入 {0} 個工作階段", "，正在讀取主題…", "正在載入工作階段…", "提示", "錯誤", "匯出完成", "專案儲存庫");
+            Add("zh-HK", "繁體中文（香港）", "DSH Chat-History Manage — 聊天記錄管理工具", "檔案", "編輯", "語言", "說明", "關於", "確定", "匯出目錄:", "瀏覽…", "開啟資料夾", "重新整理", "選擇工作階段檔…", "匯出並儲存", "主題", "工作階段 ID", "時間", "就緒", "已載入 {0} 個工作階段", "，正在讀取主題…", "正在載入工作階段…", "提示", "錯誤", "匯出完成", "專案儲存庫");
+            Add("zh-MO", "繁體中文（澳門）", "DSH Chat-History Manage — 聊天記錄管理工具", "檔案", "編輯", "語言", "說明", "關於", "確定", "匯出目錄:", "瀏覽…", "開啟資料夾", "重新整理", "選擇工作階段檔…", "匯出並儲存", "主題", "工作階段 ID", "時間", "就緒", "已載入 {0} 個工作階段", "，正在讀取主題…", "正在載入工作階段…", "提示", "錯誤", "匯出完成", "專案儲存庫");
+            Add("zh-TW", "繁體中文（台灣）", "DSH Chat-History Manage — 聊天記錄管理工具", "檔案", "編輯", "語言", "說明", "關於", "確定", "匯出目錄:", "瀏覽…", "開啟資料夾", "重新整理", "選擇工作階段檔…", "匯出並儲存", "主題", "工作階段 ID", "時間", "就緒", "已載入 {0} 個工作階段", "，正在讀取主題…", "正在載入工作階段…", "提示", "錯誤", "匯出完成", "專案儲存庫");
             Add("ja", "日本語", "DSH Chat-History Manage — チャット履歴管理ツール", "ファイル", "編集", "言語", "ヘルプ", "バージョン情報", "OK", "エクスポート先:", "参照…", "フォルダーを開く", "リストを更新", "セッションファイルを選択…", "エクスポートして保存", "トピック", "セッションID", "時刻", "準備完了", "{0} 件のセッションを読み込みました", "、トピックを読み込み中…", "セッションを読み込み中…", "情報", "エラー", "エクスポート完了", "プロジェクトリポジトリ");
             Add("ko", "한국어", "DSH Chat-History Manage — 채팅 기록 관리 도구", "파일", "편집", "언어", "도움말", "정보", "확인", "내보내기 폴더:", "찾아보기…", "폴더 열기", "목록 새로고침", "세션 파일 선택…", "내보내고 저장", "주제", "세션 ID", "시간", "준비됨", "세션 {0}개 로드됨", "주제 읽는 중…", "세션 불러오는 중…", "정보", "오류", "내보내기 완료", "프로젝트 저장소");
             Add("fr", "Français", "DSH Chat-History Manage — outil de gestion de l'historique de chat", "Fichier", "Édition", "Langue", "Aide", "À propos", "OK", "Dossier d'export :", "Parcourir…", "Ouvrir le dossier", "Actualiser la liste", "Choisir un fichier de session…", "Exporter et enregistrer", "Sujet", "ID de session", "Heure", "Prêt", "{0} sessions chargées", ", lecture des sujets…", "Chargement de la session…", "Info", "Erreur", "Export terminé", "Dépôt du projet");
@@ -692,8 +694,10 @@ namespace DshChatHistoryManage
                 string name = ci.Name;
                 if (name.StartsWith("zh"))
                 {
-                    if (name.StartsWith("zh-Hant") || name.StartsWith("zh-HK") || name.StartsWith("zh-TW") || name.StartsWith("zh-MO"))
-                        return "zh-TW";
+                    if (name.StartsWith("zh-HK")) return "zh-HK";   // 繁体中文（香港）
+                    if (name.StartsWith("zh-MO")) return "zh-MO";   // 繁体中文（澳门）
+                    if (name.StartsWith("zh-TW")) return "zh-TW";   // 繁体中文（台湾）
+                    if (name.StartsWith("zh-Hant")) return "zh-TW"; // 泛用繁体
                     return "zh";
                 }
                 string two = ci.TwoLetterISOLanguageName;
@@ -1375,7 +1379,7 @@ namespace DshChatHistoryManage
             // 按语言英文名 A-Z 排序（显示原生名）
             foreach (string code in new[]
             {
-                "af", "ar", "hy", "az", "bn", "eu", "bg", "my", "ca", "zh", "zh-TW", "hr", "cs", "da", "nl", "en", "eo", "et", "fil", "fi",
+                "af", "ar", "hy", "az", "bn", "eu", "bg", "my", "ca", "zh", "zh-HK", "zh-MO", "zh-TW", "hr", "cs", "da", "nl", "en", "eo", "et", "fil", "fi",
                 "fr", "gl", "ka", "de", "el", "he", "hi", "hu", "is", "id", "it", "ja", "kn", "kk", "km", "ko", "lv", "lt", "ms", "ml",
                 "mr", "mn", "ne", "no", "fa", "pl", "pt", "ro", "ru", "sr", "si", "sk", "sl", "es", "sw", "sv", "ta", "te", "th", "tr",
                 "uk", "uz", "vi"
