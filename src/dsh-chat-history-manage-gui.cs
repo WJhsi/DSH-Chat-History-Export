@@ -1037,27 +1037,34 @@ namespace DshChatHistoryManage
             status = new StatusStrip();
             statusLabel = new ToolStripStatusLabel();
             statusLabel.Text = Lang.T("statusReady");
-            statusLabel.Spring = true; // 状态文字占满左侧，把链接推到右下角
+            statusLabel.TextAlign = ContentAlignment.MiddleLeft; // 状态文字靠左，不居中
             status.Items.Add(statusLabel);
-            Controls.Add(status);
 
-            // 右下角链接：GitHub 项目 + 网站
+            // 右下角链接：放进状态栏内部（ToolStripControlHost），右侧对齐，避免被主面板遮挡
             ToolTip linkTip = new ToolTip();
             lnkGithub = new LinkLabel();
             lnkGithub.Text = Lang.T("linkGithub");
+            lnkGithub.AutoSize = true;
+            lnkGithub.BackColor = Color.Transparent;
             lnkGithub.LinkBehavior = LinkBehavior.HoverUnderline;
-            lnkGithub.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            linkTip.SetToolTip(lnkGithub, "https://github.com/WJhsi/DSH-Chat-History-Export");
             lnkGithub.LinkClicked += delegate { OpenUrl("https://github.com/WJhsi/DSH-Chat-History-Export"); };
+            linkTip.SetToolTip(lnkGithub, "https://github.com/WJhsi/DSH-Chat-History-Export");
             lnkSite = new LinkLabel();
             lnkSite.Text = "www.hsij.cn";
+            lnkSite.AutoSize = true;
+            lnkSite.BackColor = Color.Transparent;
             lnkSite.LinkBehavior = LinkBehavior.HoverUnderline;
-            lnkSite.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            linkTip.SetToolTip(lnkSite, "https://www.hsij.cn");
             lnkSite.LinkClicked += delegate { OpenUrl("https://www.hsij.cn"); };
-            Controls.Add(lnkSite);
-            Controls.Add(lnkGithub);
-            PositionLinks();
+            linkTip.SetToolTip(lnkSite, "https://www.hsij.cn");
+            ToolStripControlHost hostGithub = new ToolStripControlHost(lnkGithub);
+            hostGithub.Alignment = ToolStripItemAlignment.Right;
+            hostGithub.Padding = new Padding(4, 0, 10, 0);
+            ToolStripControlHost hostSite = new ToolStripControlHost(lnkSite);
+            hostSite.Alignment = ToolStripItemAlignment.Right;
+            hostSite.Padding = new Padding(0, 0, 10, 0);
+            status.Items.Add(hostGithub);
+            status.Items.Add(hostSite);
+            Controls.Add(status);
 
             btnRefresh.Click += delegate { LoadSessions(); };
             btnPick.Click += delegate { PickFile(); };
@@ -1154,7 +1161,7 @@ namespace DshChatHistoryManage
             if (lnkGithub != null)
             {
                 lnkGithub.Text = Lang.T("linkGithub");
-                PositionLinks();
+                status.PerformLayout();
             }
             statusLabel.Text = Lang.T("statusReady");
             SaveConfig(dirBox.Text.Trim()); // 记住语言选择
@@ -1533,24 +1540,6 @@ namespace DshChatHistoryManage
         {
             try { Process.Start(url); }
             catch { }
-        }
-
-        /// <summary>右下角链接定位：紧贴状态栏右侧。</summary>
-        private void PositionLinks()
-        {
-            if (lnkGithub == null || lnkSite == null) return;
-            using (Graphics g = CreateGraphics())
-            {
-                int h = 20;
-                int siteW = TextRenderer.MeasureText(lnkSite.Text, lnkSite.Font, new Size(int.MaxValue, h), TextFormatFlags.NoPadding).Width + 6;
-                int ghW = TextRenderer.MeasureText(lnkGithub.Text, lnkGithub.Font, new Size(int.MaxValue, h), TextFormatFlags.NoPadding).Width + 6;
-                lnkSite.Height = h; lnkSite.Width = siteW;
-                lnkGithub.Height = h; lnkGithub.Width = ghW;
-                int bottom = ClientSize.Height - 26;
-                int right = ClientSize.Width - 10;
-                lnkSite.Location = new Point(right - siteW, bottom);
-                lnkGithub.Location = new Point(right - siteW - ghW - 18, bottom);
-            }
         }
 
         private void LoadConfig()
