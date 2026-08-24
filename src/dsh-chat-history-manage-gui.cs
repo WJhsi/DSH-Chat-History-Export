@@ -31,6 +31,9 @@ namespace DshChatHistoryManage
 {
     static class Program
     {
+        [DllImport("user32.dll")]
+        static extern bool SetProcessDPIAware();
+
         [STAThread]
         static int Main(string[] args)
         {
@@ -51,6 +54,8 @@ namespace DshChatHistoryManage
             }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // 感知系统 DPI：避免窗口被 DWM 按 96 DPI 渲染再拉伸（拉伸 + 悬停重绘会产生残影/变形）
+            try { SetProcessDPIAware(); } catch { }
             Application.ThreadException += delegate (object s, System.Threading.ThreadExceptionEventArgs e)
             {
                 LogCrash(e.Exception);
