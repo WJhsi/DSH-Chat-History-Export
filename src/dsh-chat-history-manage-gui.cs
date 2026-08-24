@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -1157,6 +1158,61 @@ namespace DshChatHistoryManage
         public UiMenuRenderer() : base(new UiColorTable()) { }
     }
 
+    /// <summary>自绘圆角矩形按钮（大 R 角，悬停/按下变色）。</summary>
+    class RoundedButton : Button
+    {
+        private bool hovered;
+        private bool pressed;
+        public bool Primary { get; set; } // 主按钮：强调色实底白字
+
+        public RoundedButton()
+        {
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            Cursor = Cursors.Hand;
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hovered = true; Invalidate(); }
+        protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hovered = false; Invalidate(); }
+        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); pressed = true; Invalidate(); }
+        protected override void OnMouseUp(MouseEventArgs e) { base.OnMouseUp(e); pressed = false; Invalidate(); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle rc = ClientRectangle;
+            rc.Inflate(-1, -1);
+            int r = Math.Max(8, rc.Height / 2 - 2); // 大圆角
+            using (GraphicsPath path = RoundedRect(rc, r))
+            {
+                Color bg = Primary
+                    ? (pressed ? UiTheme.AccentHover : hovered ? UiTheme.AccentHover : UiTheme.Accent)
+                    : (pressed ? UiTheme.Selection : hovered ? UiTheme.Hover : UiTheme.Panel);
+                using (SolidBrush br = new SolidBrush(bg))
+                    e.Graphics.FillPath(br, path);
+                using (Pen pen = new Pen(Primary ? UiTheme.Accent : UiTheme.Border))
+                    e.Graphics.DrawPath(pen, path);
+            }
+            Color fg = Primary ? Color.White : ForeColor;
+            TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, fg,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        }
+
+        private static GraphicsPath RoundedRect(Rectangle rc, int r)
+        {
+            GraphicsPath p = new GraphicsPath();
+            int d = r * 2;
+            p.AddArc(rc.X, rc.Y, d, d, 180, 90);
+            p.AddArc(rc.Right - d, rc.Y, d, d, 270, 90);
+            p.AddArc(rc.Right - d, rc.Bottom - d, d, d, 0, 90);
+            p.AddArc(rc.X, rc.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+    }
+
     // ---------- 关于对话框 ----------
     class AboutForm : Form
     {
@@ -1205,17 +1261,12 @@ namespace DshChatHistoryManage
             site.Location = new Point(24, 184);
             site.LinkClicked += delegate { Open("https://www.hsij.cn"); };
 
-            Button ok = new Button();
+            RoundedButton ok = new RoundedButton();
             ok.Text = Lang.T("aboutOk");
             ok.DialogResult = DialogResult.OK;
             ok.Width = 90;
             ok.Height = 30;
-            ok.BackColor = UiTheme.Accent;
-            ok.ForeColor = Color.White;
-            ok.FlatStyle = FlatStyle.Flat;
-            ok.FlatAppearance.BorderColor = UiTheme.Accent;
-            ok.FlatAppearance.MouseOverBackColor = UiTheme.AccentHover;
-            ok.Cursor = Cursors.Hand;
+            ok.Primary = true;
             ok.Location = new Point(ClientSize.Width - ok.Width - 24, ClientSize.Height - ok.Height - 20);
             AcceptButton = ok;
 
@@ -1667,28 +1718,13 @@ namespace DshChatHistoryManage
 
         private static Button MkButton(string text, int width, bool primary = false)
         {
-            Button b = new Button();
+            RoundedButton b = new RoundedButton();
             b.Text = text;
             b.Width = width;
             b.Height = 30;
             b.Margin = new Padding(0, 0, 8, 0);
-            b.FlatStyle = FlatStyle.Flat;
-            b.FlatAppearance.BorderColor = UiTheme.Border;
-            b.FlatAppearance.MouseOverBackColor = UiTheme.Hover;
-            b.FlatAppearance.MouseDownBackColor = UiTheme.Selection;
-            b.Cursor = Cursors.Hand;
-            if (primary)
-            {
-                b.BackColor = UiTheme.Accent;
-                b.ForeColor = Color.White;
-                b.FlatAppearance.BorderColor = UiTheme.Accent;
-                b.FlatAppearance.MouseOverBackColor = UiTheme.AccentHover;
-            }
-            else
-            {
-                b.BackColor = UiTheme.Panel;
-                b.ForeColor = UiTheme.Text;
-            }
+            b.Primary = primary;
+            if (!primary) b.ForeColor = UiTheme.Text;
             return b;
         }
 
