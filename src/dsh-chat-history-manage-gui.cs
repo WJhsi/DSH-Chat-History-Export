@@ -1339,12 +1339,13 @@ namespace DshChatHistoryManage
             mEdit.DropDownItems.Add(editClearCache);
 
             mLang = new ToolStripMenuItem(Lang.T("menuLang"));
+            // 按语言英文名 A-Z 排序（显示原生名）
             foreach (string code in new[]
             {
-                "zh", "en", "zh-TW", "ja", "ko", "fr", "de", "es", "pt", "ru", "it", "nl", "pl", "uk", "tr", "th", "vi", "id", "ms", "hi", "ar", "sv",
-                "da", "no", "fi", "is", "el", "cs", "sk", "hu", "ro", "bg", "sr", "hr", "sl", "lt", "lv", "et", "ca", "gl", "eu", "eo",
-                "bn", "ta", "te", "kn", "ml", "mr", "ne", "si", "my", "km", "fa", "he", "az", "kk", "uz", "mn", "ka", "hy",
-                "sw", "af", "fil"
+                "af", "ar", "hy", "az", "bn", "eu", "bg", "my", "ca", "zh", "zh-TW", "hr", "cs", "da", "nl", "en", "eo", "et", "fil", "fi",
+                "fr", "gl", "ka", "de", "el", "he", "hi", "hu", "is", "id", "it", "ja", "kn", "kk", "km", "ko", "lv", "lt", "ms", "ml",
+                "mr", "mn", "ne", "no", "fa", "pl", "pt", "ro", "ru", "sr", "si", "sk", "sl", "es", "sw", "sv", "ta", "te", "th", "tr",
+                "uk", "uz", "vi"
             })
                 mLang.DropDownItems.Add(MakeLangItem(code));
 
