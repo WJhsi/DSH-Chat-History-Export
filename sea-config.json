@@ -1,5 +1,5 @@
 {
-  "main": "recover-session.cjs",
+  "main": "dsh-chat-history-export.cjs",
   "output": "sea-prep.blob",
   "disableExperimentalSEAWarning": true
 }

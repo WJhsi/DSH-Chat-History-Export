@@ -1,13 +1,13 @@
-// recover-session-gui.cs — DSH 聊天记录找回（Win32 GUI 程序，单文件）
+// dsh-chat-history-export-gui.cs — DSH Chat-History Export：导出 DSH 聊天记录（Win32 GUI 程序，单文件）
 //
 // 编译（Windows 自带 .NET Framework 4.x，无需安装运行时）:
 //   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /unsafe /codepage:65001
 //     /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll
-//     /resource:libzstd.dll,libzstd.dll /out:recover-session.exe recover-session-gui.cs
+//     /resource:libzstd.dll,libzstd.dll /out:dsh-chat-history-export.exe dsh-chat-history-export-gui.cs
 //
 // 功能：
 //   1. 左侧会话列表（自动扫描 ~/.dsh/sessions），右侧实时预览转录内容
-//   2. 导出目录可浏览选择/手动输入，记住到 exe 旁边的 recover-session.config.json
+//   2. 导出目录可浏览选择/手动输入，记住到 exe 旁边的 dsh-chat-history-export.config.json
 //   3. 支持 session.jsonl 与 zstd 压缩的 session.jsonl.zstd（内嵌 libzstd.dll 解压）
 //   4. 无参数启动 GUI；--selftest <会话> <输出> 走同一逻辑（供自检/脚本调用）
 
@@ -23,7 +23,7 @@ using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-namespace RecoverSession
+namespace DshChatHistoryExport
 {
     static class Program
     {
@@ -72,7 +72,7 @@ namespace RecoverSession
             if (ex == null) return;
             try
             {
-                string log = Path.Combine(Path.GetTempPath(), "recover-session-crash.log");
+                string log = Path.Combine(Path.GetTempPath(), "dsh-chat-history-export-crash.log");
                 File.WriteAllText(log, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n" + ex.ToString(), new UTF8Encoding(false));
             }
             catch { }
@@ -99,7 +99,7 @@ namespace RecoverSession
 
         internal static void EnsureDll()
         {
-            string dir = Path.Combine(Path.GetTempPath(), "recover-session-native");
+            string dir = Path.Combine(Path.GetTempPath(), "dsh-chat-history-export-native");
             try { Directory.CreateDirectory(dir); }
             catch { dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location); }
             string dll = Path.Combine(dir, "libzstd.dll");
@@ -319,12 +319,12 @@ namespace RecoverSession
 
         private string ConfigPath
         {
-            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "recover-session.config.json"); }
+            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-export.config.json"); }
         }
 
         public MainForm()
         {
-            Text = "recover-session — DSH 聊天记录找回";
+            Text = "DSH Chat-History Export — 聊天记录导出工具";
             Font = new Font("Microsoft YaHei UI", 9.5f);
             ClientSize = new Size(1000, 680);
             MinimumSize = new Size(780, 520);
@@ -341,7 +341,7 @@ namespace RecoverSession
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
             Label title = new Label();
-            title.Text = "DSH 聊天记录找回工具";
+            title.Text = "DSH Chat-History Export";
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
             title.AutoSize = true;
             root.Controls.Add(title, 0, 0);

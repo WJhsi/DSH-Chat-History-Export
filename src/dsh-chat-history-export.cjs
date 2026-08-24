@@ -1,7 +1,7 @@
-// recover-session.cjs — 找回 DSH（DeepSeek Harness）的聊天记录
+// dsh-chat-history-export.cjs — 导出 DSH（DeepSeek Harness）的聊天记录
 //
 // 用法：
-//   recover-session <会话ID 或 会话文件路径> [输出文件]   （命令行模式）
+//   dsh-chat-history-export <会话ID 或 会话文件路径> [输出文件]   （命令行模式）
 //   直接双击/无参数运行                                     （交互模式：文件选择器 / 会话列表 / 手动输入）
 //
 // 功能：
@@ -18,7 +18,7 @@ const { zstdDecompressSync } = require('node:zlib');
 
 // ---------- 配置（自定义导出目录，存 exe 旁边） ----------
 function configPath() {
-  return path.join(path.dirname(process.execPath), 'recover-session.config.json');
+  return path.join(path.dirname(process.execPath), 'dsh-chat-history-export.config.json');
 }
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch { return {}; }
@@ -29,7 +29,7 @@ function saveConfig(cfg) {
 
 // ---------- Windows 目录选择器 ----------
 function pickFolderViaDialog(initial) {
-  const tmp = path.join(os.tmpdir(), 'recover-folder.txt');
+  const tmp = path.join(os.tmpdir(), 'dsh-chat-history-export-folder.txt');
   try { fs.rmSync(tmp, { force: true }); } catch {}
   const ps = `Add-Type -AssemblyName System.Windows.Forms
 $d = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -93,7 +93,7 @@ function listSessions() {
 
 // ---------- Windows 文件选择器 ----------
 function pickFileViaDialog() {
-  const tmp = path.join(os.tmpdir(), 'recover-picked.txt');
+  const tmp = path.join(os.tmpdir(), 'dsh-chat-history-export-picked.txt');
   try { fs.rmSync(tmp, { force: true }); } catch {}
   const ps = `Add-Type -AssemblyName System.Windows.Forms
 $d = New-Object System.Windows.Forms.OpenFileDialog
@@ -212,7 +212,7 @@ function run(input, outArg) {
     else promptQueue.push(resolve);
   });
 
-  console.log('=== recover-session 找回聊天记录 ===');
+  console.log('=== DSH Chat-History Export 导出聊天记录 ===');
   console.log('1) 用文件选择器挑选会话文件');
   console.log('2) 从已保存会话列表选择');
   console.log('3) 手动输入会话ID或文件路径');
