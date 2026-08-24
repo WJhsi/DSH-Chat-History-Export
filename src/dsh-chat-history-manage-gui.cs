@@ -1158,12 +1158,13 @@ namespace DshChatHistoryManage
         public UiMenuRenderer() : base(new UiColorTable()) { }
     }
 
-    /// <summary>自绘圆角矩形按钮（大 R 角，悬停/按下变色）。</summary>
+    /// <summary>自绘圆角矩形按钮（大 R 角或胶囊形，悬停/按下变色）。</summary>
     class RoundedButton : Button
     {
         private bool hovered;
         private bool pressed;
         public bool Primary { get; set; } // 主按钮：强调色实底白字
+        public bool Capsule { get; set; } // 胶囊形：两端全圆
 
         public RoundedButton()
         {
@@ -1184,7 +1185,7 @@ namespace DshChatHistoryManage
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle rc = ClientRectangle;
             rc.Inflate(-1, -1);
-            int r = Math.Max(8, rc.Height / 2 - 2); // 大圆角
+            int r = Capsule ? rc.Height / 2 : Math.Max(8, rc.Height / 2 - 2); // 胶囊或大圆角
             using (GraphicsPath path = RoundedRect(rc, r))
             {
                 Color bg = Primary
@@ -1464,8 +1465,8 @@ namespace DshChatHistoryManage
             dirBox.Dock = DockStyle.Fill;
             dirBox.BackColor = UiTheme.Panel;
             dirBox.ForeColor = UiTheme.Text;
-            btnBrowse = MkButton(Lang.T("browse"), 84);
-            btnOpenDir = MkButton(Lang.T("openDir"), 92);
+            btnBrowse = MkButton(Lang.T("browse"), 84, false, true);      // 目录按钮：胶囊形
+            btnOpenDir = MkButton(Lang.T("openDir"), 92, false, true);    // 目录按钮：胶囊形
             dirRow.Controls.Add(lb, 0, 0);
             dirRow.Controls.Add(dirBox, 1, 0);
             dirRow.Controls.Add(btnBrowse, 2, 0);
@@ -1716,7 +1717,7 @@ namespace DshChatHistoryManage
             catch { }
         }
 
-        private static Button MkButton(string text, int width, bool primary = false)
+        private static Button MkButton(string text, int width, bool primary = false, bool capsule = false)
         {
             RoundedButton b = new RoundedButton();
             b.Text = text;
@@ -1724,6 +1725,7 @@ namespace DshChatHistoryManage
             b.Height = 30;
             b.Margin = new Padding(0, 0, 8, 0);
             b.Primary = primary;
+            b.Capsule = capsule;
             if (!primary) b.ForeColor = UiTheme.Text;
             return b;
         }
