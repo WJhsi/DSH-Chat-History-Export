@@ -858,6 +858,7 @@ namespace DshChatHistoryManage
         private TextBox dirBox;
         private Button btnBrowse, btnOpenDir, btnRefresh, btnPick, btnExport;
         private PreviewView preview;
+        private SplitContainer split; // 左列表 / 右预览分割（左宽随列宽自适应）
         private StatusStrip status;
         private ToolStripStatusLabel statusLabel;
         private List<SessionInfo> sessions = new List<SessionInfo>();
@@ -1018,9 +1019,10 @@ namespace DshChatHistoryManage
 
             SplitContainer split = new SplitContainer();
             split.Dock = DockStyle.Fill;
-            split.FixedPanel = FixedPanel.Panel1; // 左侧列表固定宽度，右侧预览随窗口宽度自适应拉伸
+            split.FixedPanel = FixedPanel.Panel1; // 左侧列表宽度由 FitLeftPanel 自适应，右侧预览拿剩余空间
             split.SplitterDistance = 640;
             split.Panel1MinSize = 480;
+            this.split = split;
 
             list = new ListView();
             list.Dock = DockStyle.Fill;
@@ -1255,8 +1257,8 @@ namespace DshChatHistoryManage
         }
 
         /// <summary>
-        /// 按「表头 + 列内最宽内容」自适应列宽，保证主题 / 会话 ID / 时间完整显示。
-        /// 主题列上限 700px，防止个别超长主题把整列撑爆（其余行仍可横向滚动查看）。
+        /// 按「表头 + 列内最宽内容」自适应列宽，并让左面板跟随三列总宽（主题 / 会话 ID / 时间永远完整可见，不被预览框遮挡）。
+        /// 窗口有空间就加宽左面板；空间不足则优先压缩主题列，保证三列都在可视区内。
         /// </summary>
         private void ResizeColumns()
         {
@@ -1264,18 +1266,29 @@ namespace DshChatHistoryManage
             {
                 using (Graphics g = list.CreateGraphics())
                 {
+                    int[] w = new int[list.Columns.Count];
                     for (int c = 0; c < list.Columns.Count; c++)
                     {
-                        int w = TextRenderer.MeasureText(g, list.Columns[c].Text, list.Font).Width + 20;
+                        int width = TextRenderer.MeasureText(g, list.Columns[c].Text, list.Font).Width + 20;
                         foreach (ListViewItem it in list.Items)
                         {
                             string txt = c < it.SubItems.Count ? it.SubItems[c].Text : "";
                             int tw = TextRenderer.MeasureText(g, txt, list.Font).Width + 24;
-                            if (tw > w) w = tw;
+                            if (tw > width) width = tw;
                         }
-                        if (c == 0 && w > 700) w = 700;
-                        list.Columns[c].Width = w;
+                        if (c == 0 && width > 700) width = 700; // 主题列上限
+                        w[c] = width;
                     }
+                    int total = w[0] + w[1] + w[2] + 30; // 垂直滚动条 + 右边距
+                    int maxLeft = (int)(ClientSize.Width * 0.65); // 最多占窗口 65%，给预览留空间
+                    if (total > maxLeft)
+                    {
+                        int overflow = total - maxLeft;
+                        w[0] = Math.Max(70, w[0] - overflow); // 空间不足时压缩主题列
+                        total = w[0] + w[1] + w[2] + 30;
+                    }
+                    for (int c = 0; c < list.Columns.Count; c++) list.Columns[c].Width = w[c];
+                    split.SplitterDistance = Math.Max(split.Panel1MinSize, Math.Min(total, maxLeft));
                 }
             }
             catch { }
