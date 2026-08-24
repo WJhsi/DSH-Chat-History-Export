@@ -536,14 +536,13 @@ namespace DshChatHistoryManage
             public string Text;    // 要绘制的文本（已清洗）
             public string Header;  // 工具块的折叠头（无箭头，如 "pwsh — OK"）
             public bool Collapsed; // 工具块是否折叠
+            public bool UseGdi;    // 含代理对 emoji → 用 GDI 绘制（保真字形）；否则 GDI+（快且 ClearType 清晰）
             public Font Font;
             public Color Color;
             public int Y;
             public int Height;
             public int HeaderHeight; // 工具块头部行高（可点击区域）
             public int DetailHeight; // 工具块细节行高（展开时显示）
-            public Bitmap Cache;     // 已渲染位图（按当前宽度缓存，滚动/切换直接 blit）
-            public int CacheWidth;
         }
 
         private List<Block> blocks = new List<Block>();
@@ -553,7 +552,6 @@ namespace DshChatHistoryManage
         private int layoutWidth = -1;
         private const int PadX = 10;
         private const int MaxBlockChars = 6000; // 显示截断上限：限制 CJK 换行布局成本
-        private long cacheBytes; // 位图缓存总字节，超限整体清空防内存膨胀
         private Font fBase, fHead, fToolHead, fToolDetail;
 
         public PreviewView()
@@ -575,7 +573,6 @@ namespace DshChatHistoryManage
             if (md != lastMd)
             {
                 lastMd = md;
-                ClearCaches(); // 释放旧块位图
                 blocks.Clear();
                 BuildBlocks(md);
                 blocksDirty = true; // 新块需要测量
@@ -664,6 +661,15 @@ namespace DshChatHistoryManage
             return s;
         }
 
+        /// <summary>文本是否包含代理对 emoji（GDI+ 无法经字体回退渲染，需走 GDI）。</summary>
+        private static bool HasSurrogateEmoji(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            for (int i = 0; i < s.Length; i++)
+                if (char.IsHighSurrogate(s[i])) return true;
+            return false;
+        }
+
         private static Block MakeBlock(BlockKind kind, string text, Color color, Font font)
         {
             Block b = new Block();
@@ -671,6 +677,7 @@ namespace DshChatHistoryManage
             b.Text = text;
             b.Color = color;
             b.Font = font;
+            b.UseGdi = HasSurrogateEmoji(text); // 含 emoji 的块用 GDI 绘制保真字形
             return b;
         }
 
@@ -696,9 +703,9 @@ namespace DshChatHistoryManage
         }
 
         // ---------- 布局 ----------
-        // 测量用 GDI+（MeasureString 对 CJK 换行比 GDI 快 50 倍以上），结果缓存在块上；
-        // 绘制用 GDI（TextRenderer，emoji 经字体链接可渲染真字形）并把块渲染成位图缓存，
-        // 滚动/折叠切换只做位图 blit，避免逐块重复做昂贵的 CJK 换行布局。
+        // 测量用 GDI+（MeasureString 对 CJK 换行比 GDI 快 50 倍以上），结果缓存在块上，宽度未变不重测。
+        // 绘制直接画到屏幕（保留 ClearType 亚像素渲染，边缘清晰、无位图往返的乱码问题）：
+        // 含 emoji 的块用 GDI（保真字形），其余用 GDI+（CJK 布局快）。
         private void Relayout()
         {
             int w = Math.Max(60, ClientSize.Width - PadX * 2);
@@ -706,7 +713,6 @@ namespace DshChatHistoryManage
             {
                 layoutWidth = w;
                 blocksDirty = false;
-                ClearCaches(); // 宽度变化 → 所有块位图需重渲染
                 using (Graphics g = CreateGraphics())
                 {
                     foreach (Block b in blocks)
@@ -738,54 +744,13 @@ namespace DshChatHistoryManage
         {
             if (string.IsNullOrEmpty(text)) return font.Height + 10;
             SizeF sz = g.MeasureString(text, font, new SizeF(width, 1000000f));
-            return (int)Math.Ceiling(sz.Height) + 10; // +10 安全边距：GDI+ 测量与 GDI 绘制换行可能有差异
-        }
-
-        // ---------- 块渲染与位图缓存 ----------
-        private Bitmap RenderBlock(Block b, int width)
-        {
-            int h = b.Height + 16;
-            Bitmap bmp = new Bitmap(width, Math.Max(1, h));
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                g.Clear(BackColor);
-                if (b.Kind == BlockKind.Tool)
-                {
-                    string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
-                    TextRenderer.DrawText(g, head, fToolHead, new Rectangle(0, 0, width, b.HeaderHeight), b.Color,
-                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-                    if (!b.Collapsed)
-                    {
-                        TextRenderer.DrawText(g, b.Text, fToolDetail, new Rectangle(12, b.HeaderHeight, width - 12, b.DetailHeight + 16), b.Color,
-                            TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-                    }
-                }
-                else
-                {
-                    TextRenderer.DrawText(g, b.Text, b.Font, new Rectangle(0, 0, width, b.Height + 16), b.Color,
-                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-                }
-            }
-            return bmp;
-        }
-
-        private void ClearCaches()
-        {
-            foreach (Block b in blocks)
-            {
-                if (b.Cache != null) { b.Cache.Dispose(); b.Cache = null; }
-            }
-            cacheBytes = 0;
-        }
-
-        private static long BitmapBytes(Bitmap bmp)
-        {
-            return (long)bmp.Width * bmp.Height * 4;
+            return (int)Math.Ceiling(sz.Height) + 10; // +10 安全边距
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(BackColor);
+            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             int scrollY = -AutoScrollPosition.Y;
             int viewH = ClientSize.Height;
             Graphics g = e.Graphics;
@@ -794,18 +759,35 @@ namespace DshChatHistoryManage
                 if (b.Y + b.Height < scrollY) continue;
                 if (b.Y > scrollY + viewH) break;
                 int by = b.Y - scrollY;
-                if (b.Cache == null || b.CacheWidth != layoutWidth)
+                if (b.Kind == BlockKind.Tool)
                 {
-                    if (b.Cache != null) { cacheBytes -= BitmapBytes(b.Cache); b.Cache.Dispose(); }
-                    b.Cache = RenderBlock(b, layoutWidth);
-                    b.CacheWidth = layoutWidth;
-                    cacheBytes += BitmapBytes(b.Cache);
-                    if (cacheBytes > 64L * 1024 * 1024) ClearCaches(); // 内存保护：超限整体清空重渲染
+                    string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
+                    DrawBlock(g, head, fToolHead, new RectangleF(PadX, by, layoutWidth, b.HeaderHeight), b.Color, b.UseGdi);
+                    if (!b.Collapsed)
+                    {
+                        DrawBlock(g, b.Text, fToolDetail, new RectangleF(PadX + 12, by + b.HeaderHeight, layoutWidth - 12, b.DetailHeight), b.Color, b.UseGdi);
+                    }
                 }
-                g.SetClip(new Rectangle(0, by, ClientSize.Width, b.Height));
-                g.DrawImage(b.Cache, PadX, by);
+                else
+                {
+                    DrawBlock(g, b.Text, b.Font, new RectangleF(PadX, by, layoutWidth, b.Height), b.Color, b.UseGdi);
+                }
             }
-            g.ResetClip();
+        }
+
+        private static void DrawBlock(Graphics g, string text, Font font, RectangleF rect, Color color, bool useGdi)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            if (useGdi)
+            {
+                TextRenderer.DrawText(g, text, font, Rectangle.Ceiling(rect), color,
+                    TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+            }
+            else
+            {
+                using (SolidBrush brush = new SolidBrush(color))
+                    g.DrawString(text, font, brush, rect);
+            }
         }
 
         protected override void OnResize(EventArgs e)
@@ -826,19 +808,12 @@ namespace DshChatHistoryManage
                     if (b.Kind == BlockKind.Tool && y < b.Y + b.HeaderHeight)
                     {
                         b.Collapsed = !b.Collapsed; // 点击折叠头展开/收起
-                        if (b.Cache != null) { cacheBytes -= BitmapBytes(b.Cache); b.Cache.Dispose(); b.Cache = null; }
                         Relayout();
                         Invalidate();
                     }
                     return;
                 }
             }
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing) ClearCaches();
-            base.Dispose(disposing);
         }
     }
 
