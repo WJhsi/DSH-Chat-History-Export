@@ -624,8 +624,8 @@ namespace DshChatHistoryExport
         {
             Text = Lang.T("title");
             Font = new Font("Microsoft YaHei UI", 9.5f);
-            ClientSize = new Size(1000, 680);
-            MinimumSize = new Size(780, 520);
+            ClientSize = new Size(1280, 720);
+            MinimumSize = new Size(1024, 600);
             StartPosition = FormStartPosition.CenterScreen;
 
             TableLayoutPanel root = new TableLayoutPanel();
@@ -684,8 +684,8 @@ namespace DshChatHistoryExport
 
             SplitContainer split = new SplitContainer();
             split.Dock = DockStyle.Fill;
-            split.SplitterDistance = 460;
-            split.Panel1MinSize = 340;
+            split.SplitterDistance = 640;
+            split.Panel1MinSize = 480;
 
             list = new ListView();
             list.Dock = DockStyle.Fill;
