@@ -444,10 +444,33 @@ namespace DshChatHistoryManage
         }
     }
 
-    // ---------- 界面语言（中文 / English） ----------
+    // ---------- 界面语言（60+ 常用语言，缺失键回退英文） ----------
     static class Lang
     {
-        public static string Current = "zh"; // "zh" | "en"，启动时从配置读取
+        public static string Current = "zh"; // 当前语言代码，启动时从配置读取
+
+        public class Language
+        {
+            public string Code;
+            public string NativeName;
+            public Dictionary<string, string> Dict;
+            public Language(string code, string nativeName, Dictionary<string, string> dict)
+            {
+                Code = code; NativeName = nativeName; Dict = dict;
+            }
+        }
+
+        public static readonly List<Language> Languages = new List<Language>();
+
+        // 所有语言都翻译的核心键（其余键缺失时回退英文）
+        private static readonly string[] CoreKeys =
+        {
+            "title", "menuFile", "menuEdit", "menuLang", "menuHelp", "about", "aboutOk",
+            "dirLabel", "browse", "openDir", "refresh", "pick", "exportBtn",
+            "colTopic", "colId", "colTime",
+            "statusReady", "statusLoaded", "statusReading", "statusLoading",
+            "msgInfo", "msgError", "msgExportDone", "linkGithub"
+        };
 
         private static readonly Dictionary<string, string> Zh = new Dictionary<string, string>
         {
@@ -476,6 +499,10 @@ namespace DshChatHistoryManage
             { "langEn", "English" },
             { "menuHelp", "帮助" },
             { "about", "关于" },
+            { "langGroupCommon", "常用" },
+            { "langGroupEurope", "欧洲" },
+            { "langGroupAsia", "亚洲·中东" },
+            { "langGroupAfrica", "非洲·其他" },
             { "aboutTitle", "关于 DSH Chat-History Manage" },
             { "aboutVersion", "版本 1.0.0" },
             { "aboutDesc", "把 DeepSeek Harness（DSH）保存在本地磁盘的会话文件导出成可读的 Markdown 聊天记录。\n单文件 Win32 程序，无需安装运行时；支持 zstd 压缩与明文 JSONL。" },
@@ -532,6 +559,10 @@ namespace DshChatHistoryManage
             { "langEn", "English" },
             { "menuHelp", "&Help" },
             { "about", "&About" },
+            { "langGroupCommon", "Common" },
+            { "langGroupEurope", "Europe" },
+            { "langGroupAsia", "Asia & Middle East" },
+            { "langGroupAfrica", "Africa & Others" },
             { "aboutTitle", "About DSH Chat-History Manage" },
             { "aboutVersion", "Version 1.0.0" },
             { "aboutDesc", "Exports chat sessions saved by DeepSeek Harness (DSH) on local disk into readable Markdown transcripts.\nSingle-file Win32 app, no runtime required; supports zstd-compressed and plain JSONL." },
@@ -561,11 +592,101 @@ namespace DshChatHistoryManage
             { "previewTruncated", "…(preview truncated; the exported file contains the full content)" },
         };
 
+        static Lang()
+        {
+            Languages.Add(new Language("zh", "简体中文", Zh));
+            Languages.Add(new Language("en", "English", En));
+            // CoreKeys 顺序：title, menuFile, menuEdit, menuLang, menuHelp, about, aboutOk,
+            //             dirLabel, browse, openDir, refresh, pick, exportBtn,
+            //             colTopic, colId, colTime,
+            //             statusReady, statusLoaded, statusReading, statusLoading,
+            //             msgInfo, msgError, msgExportDone, linkGithub
+            Add("zh-TW", "繁體中文", "DSH Chat-History Manage — 聊天記錄管理工具", "檔案", "編輯", "語言", "說明", "關於", "確定", "匯出目錄:", "瀏覽…", "開啟資料夾", "重新整理", "選擇工作階段檔…", "匯出並儲存", "主題", "工作階段 ID", "時間", "就緒", "已載入 {0} 個工作階段", "，正在讀取主題…", "正在載入工作階段…", "提示", "錯誤", "匯出完成", "專案儲存庫");
+            Add("ja", "日本語", "DSH Chat-History Manage — チャット履歴管理ツール", "ファイル", "編集", "言語", "ヘルプ", "バージョン情報", "OK", "エクスポート先:", "参照…", "フォルダーを開く", "リストを更新", "セッションファイルを選択…", "エクスポートして保存", "トピック", "セッションID", "時刻", "準備完了", "{0} 件のセッションを読み込みました", "、トピックを読み込み中…", "セッションを読み込み中…", "情報", "エラー", "エクスポート完了", "プロジェクトリポジトリ");
+            Add("ko", "한국어", "DSH Chat-History Manage — 채팅 기록 관리 도구", "파일", "편집", "언어", "도움말", "정보", "확인", "내보내기 폴더:", "찾아보기…", "폴더 열기", "목록 새로고침", "세션 파일 선택…", "내보내고 저장", "주제", "세션 ID", "시간", "준비됨", "세션 {0}개 로드됨", "주제 읽는 중…", "세션 불러오는 중…", "정보", "오류", "내보내기 완료", "프로젝트 저장소");
+            Add("fr", "Français", "DSH Chat-History Manage — outil de gestion de l'historique de chat", "Fichier", "Édition", "Langue", "Aide", "À propos", "OK", "Dossier d'export :", "Parcourir…", "Ouvrir le dossier", "Actualiser la liste", "Choisir un fichier de session…", "Exporter et enregistrer", "Sujet", "ID de session", "Heure", "Prêt", "{0} sessions chargées", ", lecture des sujets…", "Chargement de la session…", "Info", "Erreur", "Export terminé", "Dépôt du projet");
+            Add("de", "Deutsch", "DSH Chat-History Manage — Chat-Verlauf-Verwaltungstool", "Datei", "Bearbeiten", "Sprache", "Hilfe", "Über", "OK", "Exportordner:", "Durchsuchen…", "Ordner öffnen", "Liste aktualisieren", "Sitzungsdatei auswählen…", "Exportieren und speichern", "Thema", "Sitzungs-ID", "Zeit", "Bereit", "{0} Sitzungen geladen", ", Themen werden gelesen…", "Sitzung wird geladen…", "Info", "Fehler", "Export abgeschlossen", "Projekt-Repository");
+            Add("es", "Español", "DSH Chat-History Manage — herramienta de gestión del historial de chat", "Archivo", "Editar", "Idioma", "Ayuda", "Acerca de", "Aceptar", "Carpeta de exportación:", "Examinar…", "Abrir carpeta", "Actualizar lista", "Elegir archivo de sesión…", "Exportar y guardar", "Tema", "ID de sesión", "Hora", "Listo", "{0} sesiones cargadas", ", leyendo temas…", "Cargando sesión…", "Información", "Error", "Exportación completada", "Repositorio del proyecto");
+            Add("pt", "Português", "DSH Chat-History Manage — ferramenta de gestão de histórico de chat", "Arquivo", "Editar", "Idioma", "Ajuda", "Sobre", "OK", "Pasta de exportação:", "Procurar…", "Abrir pasta", "Atualizar lista", "Escolher arquivo de sessão…", "Exportar e salvar", "Tópico", "ID da sessão", "Hora", "Pronto", "{0} sessões carregadas", ", lendo tópicos…", "Carregando sessão…", "Informação", "Erro", "Exportação concluída", "Repositório do projeto");
+            Add("ru", "Русский", "DSH Chat-History Manage — инструмент управления историей чата", "Файл", "Правка", "Язык", "Справка", "О программе", "ОК", "Папка экспорта:", "Обзор…", "Открыть папку", "Обновить список", "Выбрать файл сессии…", "Экспортировать и сохранить", "Тема", "ID сессии", "Время", "Готово", "Загружено сессий: {0}", ", чтение тем…", "Загрузка сессии…", "Инфо", "Ошибка", "Экспорт завершён", "Репозиторий проекта");
+            Add("it", "Italiano", "DSH Chat-History Manage — strumento di gestione della cronologia chat", "File", "Modifica", "Lingua", "Aiuto", "Informazioni", "OK", "Cartella di esportazione:", "Sfoglia…", "Apri cartella", "Aggiorna elenco", "Scegli file sessione…", "Esporta e salva", "Argomento", "ID sessione", "Ora", "Pronto", "{0} sessioni caricate", ", lettura argomenti…", "Caricamento sessione…", "Info", "Errore", "Esportazione completata", "Repository del progetto");
+            Add("nl", "Nederlands", "DSH Chat-History Manage — tool voor chatgeschiedenisbeheer", "Bestand", "Bewerken", "Taal", "Help", "Over", "OK", "Exportmap:", "Bladeren…", "Map openen", "Lijst verversen", "Sessiebestand kiezen…", "Exporteren en opslaan", "Onderwerp", "Sessie-ID", "Tijd", "Gereed", "{0} sessies geladen", ", onderwerpen lezen…", "Sessie laden…", "Info", "Fout", "Export voltooid", "Projectrepository");
+            Add("pl", "Polski", "DSH Chat-History Manage — narzędzie do zarządzania historią czatu", "Plik", "Edycja", "Język", "Pomoc", "O programie", "OK", "Folder eksportu:", "Przeglądaj…", "Otwórz folder", "Odśwież listę", "Wybierz plik sesji…", "Eksportuj i zapisz", "Temat", "ID sesji", "Czas", "Gotowe", "Załadowano {0} sesji", ", czytanie tematów…", "Ładowanie sesji…", "Informacja", "Błąd", "Eksport zakończony", "Repozytorium projektu");
+            Add("uk", "Українська", "DSH Chat-History Manage — інструмент керування історією чату", "Файл", "Правка", "Мова", "Довідка", "Про програму", "ОК", "Папка експорту:", "Огляд…", "Відкрити папку", "Оновити список", "Вибрати файл сесії…", "Експортувати та зберегти", "Тема", "ID сесії", "Час", "Готово", "Завантажено сесій: {0}", ", читання тем…", "Завантаження сесії…", "Інфо", "Помилка", "Експорт завершено", "Репозиторій проекту");
+            Add("tr", "Türkçe", "DSH Chat-History Manage — sohbet geçmişi yönetim aracı", "Dosya", "Düzen", "Dil", "Yardım", "Hakkında", "Tamam", "Dışa aktarma klasörü:", "Gözat…", "Klasörü aç", "Listeyi yenile", "Oturum dosyası seç…", "Dışa aktar ve kaydet", "Konu", "Oturum kimliği", "Saat", "Hazır", "{0} oturum yüklendi", ", konular okunuyor…", "Oturum yükleniyor…", "Bilgi", "Hata", "Dışa aktarma tamamlandı", "Proje deposu");
+            Add("th", "ไทย", "DSH Chat-History Manage — เครื่องมือจัดการประวัติแชท", "ไฟล์", "แก้ไข", "ภาษา", "ความช่วยเหลือ", "เกี่ยวกับ", "ตกลง", "โฟลเดอร์ส่งออก:", "เรียกดู…", "เปิดโฟลเดอร์", "รีเฟรชรายการ", "เลือกไฟล์เซสชัน…", "ส่งออกและบันทึก", "หัวข้อ", "รหัสเซสชัน", "เวลา", "พร้อม", "โหลด {0} เซสชัน", " กำลังอ่านหัวข้อ…", "กำลังโหลดเซสชัน…", "ข้อมูล", "ข้อผิดพลาด", "ส่งออกเสร็จสิ้น", "คลังโครงการ");
+            Add("vi", "Tiếng Việt", "DSH Chat-History Manage — công cụ quản lý lịch sử trò chuyện", "Tệp", "Sửa", "Ngôn ngữ", "Trợ giúp", "Giới thiệu", "OK", "Thư mục xuất:", "Duyệt…", "Mở thư mục", "Làm mới danh sách", "Chọn tệp phiên…", "Xuất và lưu", "Chủ đề", "ID phiên", "Thời gian", "Sẵn sàng", "Đã tải {0} phiên", ", đang đọc chủ đề…", "Đang tải phiên…", "Thông tin", "Lỗi", "Xuất hoàn tất", "Kho lưu trữ dự án");
+            Add("id", "Bahasa Indonesia", "DSH Chat-History Manage — alat manajemen riwayat chat", "Berkas", "Edit", "Bahasa", "Bantuan", "Tentang", "OK", "Folder ekspor:", "Telusuri…", "Buka folder", "Segarkan daftar", "Pilih file sesi…", "Ekspor dan simpan", "Topik", "ID sesi", "Waktu", "Siap", "{0} sesi dimuat", ", membaca topik…", "Memuat sesi…", "Info", "Kesalahan", "Ekspor selesai", "Repositori proyek");
+            Add("ms", "Bahasa Melayu", "DSH Chat-History Manage — alat pengurusan sejarah chat", "Fail", "Edit", "Bahasa", "Bantuan", "Perihal", "OK", "Folder eksport:", "Semak imbas…", "Buka folder", "Segar semula senarai", "Pilih fail sesi…", "Eksport dan simpan", "Topik", "ID sesi", "Masa", "Sedia", "{0} sesi dimuat", ", membaca topik…", "Memuat sesi…", "Maklumat", "Ralat", "Eksport selesai", "Repositori projek");
+            Add("hi", "हिन्दी", "DSH Chat-History Manage — चैट इतिहास प्रबंधन उपकरण", "फ़ाइल", "संपादन", "भाषा", "सहायता", "परिचय", "ठीक है", "निर्यात फ़ोल्डर:", "ब्राउज़ करें…", "फ़ोल्डर खोलें", "सूची ताज़ा करें", "सत्र फ़ाइल चुनें…", "निर्यात करें और सहेजें", "विषय", "सत्र आईडी", "समय", "तैयार", "{0} सत्र लोड हुए", ", विषय पढ़ रहे हैं…", "सत्र लोड हो रहा है…", "जानकारी", "त्रुटि", "निर्यात पूर्ण", "प्रोजेक्ट रिपॉज़िटरी");
+            Add("ar", "العربية", "DSH Chat-History Manage — أداة إدارة سجل المحادثة", "ملف", "تحرير", "اللغة", "مساعدة", "حول", "موافق", "مجلد التصدير:", "تصفح…", "فتح المجلد", "تحديث القائمة", "اختيار ملف جلسة…", "تصدير وحفظ", "الموضوع", "معرف الجلسة", "الوقت", "جاهز", "تم تحميل {0} جلسة", "، قراءة المواضيع…", "جارٍ تحميل الجلسة…", "معلومات", "خطأ", "اكتمل التصدير", "مستودع المشروع");
+            Add("sv", "Svenska", "DSH Chat-History Manage — verktyg för chatthistorik", "Arkiv", "Redigera", "Språk", "Hjälp", "Om", "OK", "Exportera mapp:", "Bläddra…", "Öppna mapp", "Uppdatera lista", "Välj sessionsfil…", "Exportera och spara", "Ämne", "Sessions-ID", "Tid", "Redo", "{0} sessioner inlästa", ", läser ämnen…", "Läser in session…", "Info", "Fel", "Export klar", "Projektförråd");
+            Add("da", "Dansk", "DSH Chat-History Manage — værktøj til chat-historik", "Fil", "Rediger", "Sprog", "Hjælp", "Om", "OK", "Eksportmappe:", "Gennemse…", "Åbn mappe", "Opdater liste", "Vælg sessionsfil…", "Eksporter og gem", "Emne", "Sessions-ID", "Tid", "Klar", "{0} sessioner indlæst", ", læser emner…", "Indlæser session…", "Info", "Fejl", "Eksport fuldført", "Projektlager");
+            Add("no", "Norsk", "DSH Chat-History Manage — verktøy for chathistorikk", "Fil", "Rediger", "Språk", "Hjelp", "Om", "OK", "Eksportmappe:", "Bla gjennom…", "Åpne mappe", "Oppdater liste", "Velg øktfil…", "Eksporter og lagre", "Emne", "Økt-ID", "Tid", "Klar", "{0} økter lastet", ", leser emner…", "Laster inn økt…", "Info", "Feil", "Eksport fullført", "Prosjektlager");
+            Add("fi", "Suomi", "DSH Chat-History Manage — keskusteluhistorian hallintatyökalu", "Tiedosto", "Muokkaa", "Kieli", "Ohje", "Tietoja", "OK", "Vientikansio:", "Selaa…", "Avaa kansio", "Päivitä luettelo", "Valitse istuntotiedosto…", "Vie ja tallenna", "Aihe", "Istunnon tunnus", "Aika", "Valmis", "{0} istuntoa ladattu", ", luetaan aiheita…", "Ladataan istuntoa…", "Tiedot", "Virhe", "Vienti valmis", "Projektivarasto");
+            Add("is", "Íslenska", "DSH Chat-History Manage — verkfæri til að stjórna spjallsögu", "Skrá", "Breyta", "Tungumál", "Hjálp", "Um", "OK", "Útflutningsmappa:", "Fletta…", "Opna möppu", "Endurnýja lista", "Velja lotuskrá…", "Flytja út og vista", "Efni", "Lotuauðkenni", "Tími", "Tilbúið", "{0} lotur hlaðnar", ", les efni…", "Hleð lotu…", "Upplýsingar", "Villa", "Útflutningi lokið", "Verkefnageymsla");
+            Add("el", "Ελληνικά", "DSH Chat-History Manage — εργαλείο διαχείρισης ιστορικού συνομιλίας", "Αρχείο", "Επεξεργασία", "Γλώσσα", "Βοήθεια", "Σχετικά", "ΟΚ", "Φάκελος εξαγωγής:", "Αναζήτηση…", "Άνοιγμα φακέλου", "Ανανέωση λίστας", "Επιλογή αρχείου συνεδρίας…", "Εξαγωγή και αποθήκευση", "Θέμα", "Αναγνωριστικό συνεδρίας", "Ώρα", "Έτοιμο", "{0} συνεδρίες φορτώθηκαν", ", ανάγνωση θεμάτων…", "Φόρτωση συνεδρίας…", "Πληροφορίες", "Σφάλμα", "Η εξαγωγή ολοκληρώθηκε", "Αποθετήριο έργου");
+            Add("cs", "Čeština", "DSH Chat-History Manage — nástroj pro správu historie chatu", "Soubor", "Úpravy", "Jazyk", "Nápověda", "O aplikaci", "OK", "Složka exportu:", "Procházet…", "Otevřít složku", "Obnovit seznam", "Vybrat soubor relace…", "Exportovat a uložit", "Téma", "ID relace", "Čas", "Připraveno", "Načteno {0} relací", ", čtení témat…", "Načítání relace…", "Informace", "Chyba", "Export dokončen", "Úložiště projektu");
+            Add("sk", "Slovenčina", "DSH Chat-History Manage — nástroj na správu histórie chatu", "Súbor", "Upraviť", "Jazyk", "Pomocník", "O aplikácii", "OK", "Priečinok exportu:", "Prehľadávať…", "Otvoriť priečinok", "Obnoviť zoznam", "Vybrať súbor relácie…", "Exportovať a uložiť", "Téma", "ID relácie", "Čas", "Pripravené", "Načítané {0} relácií", ", čítanie tém…", "Načítava sa relácia…", "Informácie", "Chyba", "Export dokončený", "Úložisko projektu");
+            Add("hu", "Magyar", "DSH Chat-History Manage — csevegési előzmények kezelő eszköze", "Fájl", "Szerkesztés", "Nyelv", "Súgó", "Névjegy", "OK", "Exportmappa:", "Tallózás…", "Mappa megnyitása", "Lista frissítése", "Munkamenet-fájl kiválasztása…", "Exportálás és mentés", "Téma", "Munkamenet-azonosító", "Idő", "Kész", "{0} munkamenet betöltve", ", témák olvasása…", "Munkamenet betöltése…", "Információ", "Hiba", "Az exportálás kész", "Projekt-tárhely");
+            Add("ro", "Română", "DSH Chat-History Manage — instrument de gestionare a istoricului chat", "Fișier", "Editare", "Limbă", "Ajutor", "Despre", "OK", "Folder de export:", "Răsfoire…", "Deschide folder", "Actualizează lista", "Alege fișierul sesiunii…", "Exportă și salvează", "Subiect", "ID sesiune", "Oră", "Gata", "{0} sesiuni încărcate", ", citesc subiectele…", "Se încarcă sesiunea…", "Informații", "Eroare", "Export finalizat", "Depozitul proiectului");
+            Add("bg", "Български", "DSH Chat-History Manage — инструмент за управление на чат историята", "Файл", "Редактиране", "Език", "Помощ", "Относно", "ОК", "Папка за експорт:", "Разглеждане…", "Отваряне на папка", "Обновяване на списъка", "Избор на файл на сесия…", "Експортиране и запазване", "Тема", "ID на сесия", "Час", "Готово", "Заредени {0} сесии", ", четене на теми…", "Зареждане на сесия…", "Информация", "Грешка", "Експортът завърши", "Хранилище на проекта");
+            Add("sr", "Српски", "DSH Chat-History Manage — алат за управљање историјом ћаскања", "Датотека", "Уређивање", "Језик", "Помоћ", "О програму", "ОК", "Фасцикла за извоз:", "Преглед…", "Отвори фасциклу", "Освежи листу", "Изабери фајл сесије…", "Извези и сачувај", "Тема", "ID сесије", "Време", "Спремно", "{0} сесија учитано", ", читање тема…", "Учитавање сесије…", "Информација", "Грешка", "Извоз завршен", "Репозиторијум пројекта");
+            Add("hr", "Hrvatski", "DSH Chat-History Manage — alat za upravljanje poviješću chata", "Datoteka", "Uređivanje", "Jezik", "Pomoć", "O programu", "OK", "Mapa izvoza:", "Pregled…", "Otvori mapu", "Osvježi popis", "Odaberi datoteku sesije…", "Izvezi i spremi", "Tema", "ID sesije", "Vrijeme", "Spremno", "Učitano {0} sesija", ", čitanje tema…", "Učitavanje sesije…", "Informacije", "Greška", "Izvoz dovršen", "Repozitorij projekta");
+            Add("sl", "Slovenščina", "DSH Chat-History Manage — orodje za upravljanje zgodovine klepeta", "Datoteka", "Urejanje", "Jezik", "Pomoč", "O programu", "V redu", "Mapa za izvoz:", "Prebrskaj…", "Odpri mapo", "Osveži seznam", "Izberi datoteko seje…", "Izvozi in shrani", "Tema", "ID seje", "Čas", "Pripravljeno", "Naloženih {0} sej", ", branje tem…", "Nalaganje seje…", "Informacije", "Napaka", "Izvoz končan", "Skladišče projekta");
+            Add("lt", "Lietuvių", "DSH Chat-History Manage — pokalbių istorijos valdymo įrankis", "Failas", "Redagavimas", "Kalba", "Žinynas", "Apie", "Gerai", "Eksporto aplankas:", "Naršyti…", "Atidaryti aplanką", "Atnaujinti sąrašą", "Pasirinkti sesijos failą…", "Eksportuoti ir išsaugoti", "Tema", "Sesijos ID", "Laikas", "Paruošta", "Įkelta {0} sesijų", ", skaitomos temos…", "Įkeliama sesija…", "Informacija", "Klaida", "Eksportas baigtas", "Projekto saugykla");
+            Add("lv", "Latviešu", "DSH Chat-History Manage — tērzēšanas vēstures pārvaldības rīks", "Fails", "Rediģēt", "Valoda", "Palīdzība", "Par programmu", "Labi", "Eksporta mape:", "Pārlūkot…", "Atvērt mapi", "Atsvaidzināt sarakstu", "Izvēlēties sesijas failu…", "Eksportēt un saglabāt", "Tēma", "Sesijas ID", "Laiks", "Gatavs", "Ielādētas {0} sesijas", ", tiek lasītas tēmas…", "Notiek sesijas ielāde…", "Informācija", "Kļūda", "Eksports pabeigts", "Projekta krātuve");
+            Add("et", "Eesti", "DSH Chat-History Manage — vestluse ajaloo haldamise tööriist", "Fail", "Redigeeri", "Keel", "Abi", "Teave", "OK", "Ekspordikaust:", "Sirvi…", "Ava kaust", "Värskenda loendit", "Vali seansi fail…", "Ekspordi ja salvesta", "Teema", "Seansi ID", "Kellaaeg", "Valmis", "Laaditud {0} seanssi", ", loetakse teemasid…", "Seansi laadimine…", "Teave", "Viga", "Eksport lõpetatud", "Projekti hoidla");
+            Add("ca", "Català", "DSH Chat-History Manage — eina de gestió de l'historial de xat", "Fitxer", "Edita", "Idioma", "Ajuda", "Quant a", "D'acord", "Carpeta d'exportació:", "Navega…", "Obre la carpeta", "Actualitza la llista", "Tria el fitxer de sessió…", "Exporta i desa", "Tema", "ID de sessió", "Hora", "A punt", "{0} sessions carregades", ", llegint temes…", "Carregant la sessió…", "Informació", "Error", "Exportació completada", "Repositori del projecte");
+            Add("gl", "Galego", "DSH Chat-History Manage — ferramenta de xestión do historial de chat", "Ficheiro", "Editar", "Idioma", "Axuda", "Acerca de", "Aceptar", "Cartafol de exportación:", "Examinar…", "Abrir cartafol", "Actualizar a lista", "Escoller ficheiro de sesión…", "Exportar e gardar", "Tema", "ID de sesión", "Hora", "Listo", "{0} sesións cargadas", ", lendo temas…", "Cargando sesión…", "Información", "Erro", "Exportación rematada", "Repositorio do proxecto");
+            Add("eu", "Euskara", "DSH Chat-History Manage — txat-historiaren kudeaketa tresna", "Fitxategia", "Editatu", "Hizkuntza", "Laguntza", "Honi buruz", "Ados", "Esportazio-karpeta:", "Arakatu…", "Ireki karpeta", "Eguneratu zerrenda", "Hautatu saio-fitxategia…", "Esportatu eta gorde", "Gaia", "Saioaren IDa", "Ordua", "Prest", "{0} saio kargatu dira", ", gaiak irakurtzen…", "Saioa kargatzen…", "Informazioa", "Errorea", "Esportazioa amaituta", "Proiektuaren biltegia");
+            Add("eo", "Esperanto", "DSH Chat-History Manage — ilo por administri babilejan historion", "Dosiero", "Redakti", "Lingvo", "Helpo", "Pri", "Bone", "Eksporta dosierujo:", "Foliumi…", "Malfermi dosierujon", "Refreŝigi liston", "Elekti sean dosieron…", "Eksporti kaj konservi", "Tema", "Sean ID", "Tempo", "Preta", "{0} seancoj ŝarĝitaj", ", legas temojn…", "Ŝarĝas seancon…", "Informo", "Eraro", "Eksporto finita", "Projekta deponejo");
+            Add("bn", "বাংলা", "DSH Chat-History Manage — চ্যাট ইতিহাস ব্যবস্থাপনা টুল", "ফাইল", "সম্পাদনা", "ভাষা", "সহায়তা", "সম্পর্কে", "ঠিক আছে", "রপ্তানি ফোল্ডার:", "ব্রাউজ…", "ফোল্ডার খুলুন", "তালিকা রিফ্রেশ করুন", "সেশন ফাইল চয়ন করুন…", "রপ্তানি ও সংরক্ষণ", "বিষয়", "সেশন আইডি", "সময়", "প্রস্তুত", "{0}টি সেশন লোড হয়েছে", ", বিষয় পড়া হচ্ছে…", "সেশন লোড হচ্ছে…", "তথ্য", "ত্রুটি", "রপ্তানি সম্পন্ন", "প্রকল্প ভাণ্ডার");
+            Add("ta", "தமிழ்", "DSH Chat-History Manage — அரட்டை வரலாறு மேலாண்மை கருவி", "கோப்பு", "திருத்து", "மொழி", "உதவி", "பற்றி", "சரி", "ஏற்றுமதி கோப்புறை:", "உலாவு…", "கோப்புறையைத் திற", "பட்டியலைப் புதுப்பி", "அமர்வுக் கோப்பைத் தேர்ந்தெடு…", "ஏற்றுமதி & சேமி", "தலைப்பு", "அமர்வு ஐடி", "நேரம்", "தயார்", "{0} அமர்வுகள் ஏற்றப்பட்டன", ", தலைப்புகள் படிக்கப்படுகின்றன…", "அமர்வு ஏற்றப்படுகிறது…", "தகவல்", "பிழை", "ஏற்றுமதி முடிந்தது", "திட்டக் களஞ்சியம்");
+            Add("te", "తెలుగు", "DSH Chat-History Manage — చాట్ చరిత్ర నిర్వహణ సాధనం", "ఫైల్", "సవరించు", "భాష", "సహాయం", "గురించి", "సరే", "ఎగుమతి ఫోల్డర్:", "బ్రౌజ్…", "ఫోల్డర్ తెరువు", "జాబితా రిఫ్రెష్ చేయి", "సెషన్ ఫైల్ ఎంచుకోండి…", "ఎగుమతి & సేవ్", "అంశం", "సెషన్ ఐడి", "సమయం", "సిద్ధం", "{0} సెషన్లు లోడ్ అయ్యాయి", ", అంశాలు చదువుతున్నాయి…", "సెషన్ లోడ్ అవుతోంది…", "సమాచారం", "లోపం", "ఎగుమతి పూర్తయింది", "ప్రాజెక్ట్ రిపోజిటరీ");
+            Add("kn", "ಕನ್ನಡ", "DSH Chat-History Manage — ಚಾಟ್ ಇತಿಹಾಸ ನಿರ್ವಹಣಾ ಸಾಧನ", "ಫೈಲ್", "ಸಂಪಾದಿಸು", "ಭಾಷೆ", "ಸಹಾಯ", "ಬಗ್ಗೆ", "ಸರಿ", "ರಫ್ತು ಫೋಲ್ಡರ್:", "ಬ್ರೌಸ್…", "ಫೋಲ್ಡರ್ ತೆರೆಯಿರಿ", "ಪಟ್ಟಿಯನ್ನು ರಿಫ್ರೆಶ್ ಮಾಡಿ", "ಸೆಶನ್ ಫೈಲ್ ಆಯ್ಕೆಮಾಡಿ…", "ರಫ್ತು ಮತ್ತು ಉಳಿಸಿ", "ವಿಷಯ", "ಸೆಶನ್ ಐಡಿ", "ಸಮಯ", "ಸಿದ್ಧ", "{0} ಸೆಶನ್ಗಳು ಲೋಡ್ ಆಗಿವೆ", ", ವಿಷಯಗಳನ್ನು ಓದಲಾಗುತ್ತಿದೆ…", "ಸೆಶನ್ ಲೋಡ್ ಆಗುತ್ತಿದೆ…", "ಮಾಹಿತಿ", "ದೋಷ", "ರಫ್ತು ಪೂರ್ಣಗೊಂಡಿದೆ", "ಪ್ರಾಜೆಕ್ಟ್ ರಿಪಾಸಿಟರಿ");
+            Add("ml", "മലയാളം", "DSH Chat-History Manage — ചാറ്റ് ചരിത്ര മാനേജ്മെന്റ് ടൂൾ", "ഫയൽ", "തിരുത്തുക", "ഭാഷ", "സഹായം", "കുറിച്ച്", "ശരി", "എക്സ്പോർട്ട് ഫോൾഡർ:", "ബ്രൗസ്…", "ഫോൾഡർ തുറക്കുക", "പട്ടിക പുതുക്കുക", "സെഷൻ ഫയൽ തിരഞ്ഞെടുക്കുക…", "എക്സ്പോർട്ട് ചെയ്ത് സംരക്ഷിക്കുക", "വിഷയം", "സെഷൻ ഐഡി", "സമയം", "തയ്യാറാണ്", "{0} സെഷനുകൾ ലോഡ് ചെയ്തു", ", വിഷയങ്ങൾ വായിക്കുന്നു…", "സെഷൻ ലോഡ് ചെയ്യുന്നു…", "വിവരം", "പിശക്", "എക്സ്പോർട്ട് പൂർത്തിയായി", "പ്രോജക്ട് ശേഖരം");
+            Add("mr", "मराठी", "DSH Chat-History Manage — चॅट इतिहास व्यवस्थापन साधन", "फाइल", "संपादन", "भाषा", "मदत", "बद्दल", "ठीक आहे", "निर्यात फोल्डर:", "ब्राउझ करा…", "फोल्डर उघडा", "यादी रीफ्रेश करा", "सत्र फाइल निवडा…", "निर्यात आणि जतन करा", "विषय", "सत्र आयडी", "वेळ", "तयार", "{0} सत्र लोड केली", ", विषय वाचत आहे…", "सत्र लोड होत आहे…", "माहिती", "त्रुटी", "निर्यात पूर्ण", "प्रकल्प भांडार");
+            Add("ne", "नेपाली", "DSH Chat-History Manage — च्याट इतिहास व्यवस्थापन उपकरण", "फाइल", "सम्पादन", "भाषा", "मदत", "बारेमा", "ठीक छ", "निर्यात फोल्डर:", "ब्राउज…", "फोल्डर खोल्नुहोस्", "सूची रिफ्रेस गर्नुहोस्", "सत्र फाइल छान्नुहोस्…", "निर्यात र सुरक्षित गर्नुहोस्", "विषय", "सत्र आईडी", "समय", "तयार", "{0} सत्र लोड भयो", ", विषय पढ्दै…", "सत्र लोड हुँदैछ…", "जानकारी", "त्रुटि", "निर्यात सम्पन्न", "परियोजना भण्डार");
+            Add("si", "සිංහල", "DSH Chat-History Manage — කතාබස් ඉතිහාස කළමනාකරණ මෙවලම", "ගොනුව", "සංස්කරණය", "භාෂාව", "උදව්", "ගැන", "හරි", "අපනයන ෆෝල්ඩරය:", "බ්‍රවුස්…", "ෆෝල්ඩරය විවෘත කරන්න", "ලැයිස්තුව refresh කරන්න", "සැසි ගොනුව තෝරන්න…", "අපනයනය සහ සුරකින්න", "මාතෘකාව", "සැසි අංකය", "වේලාව", "සූදානම්", "සැසි {0} පටවා ඇත", ", මාතෘකා කියවමින්…", "සැසිය පූරණය වෙමින්…", "තොරතුරු", "දෝෂය", "අපනයනය සම්පූර්ණයි", "ව්‍යාපෘති ගබඩාව");
+            Add("my", "မြန်မာ", "DSH Chat-History Manage — ချက်တင်မှတ်တမ်း စီမံခန့်ခွဲရေးကိရိယာ", "ဖိုင်", "တည်းဖြတ်", "ဘာသာစကား", "အကူအညီ", "အကြောင်း", "အိုကေ", "ထုတ်ယူမည့်ဖိုင်တွဲ:", "ရှာဖွေ…", "ဖိုင်တွဲဖွင့်", "စာရင်းပြန်ဆန်း", "ဆက်ရှင်ဖိုင်ရွေး…", "ထုတ်ယူ၍သိမ်းရန်", "ခေါင်းစဉ်", "ဆက်ရှင် ID", "အချိန်", "အသင့်", "{0} ဆက်ရှင်တင်ပြီး", ", ခေါင်းစဉ်များဖတ်နေသည်…", "ဆက်ရှင်တင်နေသည်…", "အချက်အလက်", "အမှား", "ထုတ်ယူမှုပြီးပြီ", "ပရောဂျက်သိုလှောင်ရာ");
+            Add("km", "ខ្មែរ", "DSH Chat-History Manage — ឧបករណ៍គ្រប់គ្រងប្រវត្តិជជែក", "ឯកសារ", "កែសម្រួល", "ភាសា", "ជំនួយ", "អំពី", "យល់ព្រម", "ថតនាំចេញ:", "រកមើល…", "បើកថត", "ធ្វើឱ្យបញ្ជីស្រស់", "ជ្រើសឯកសារវគ្គ…", "នាំចេញ និងរក្សាទុក", "ប្រធានបទ", "លេខសម្គាល់វគ្គ", "ពេលវេលា", "រួចរាល់", "វគ្គ {0} បានផ្ទុក", ", កំពុងអានប្រធានបទ…", "កំពុងផ្ទុកវគ្គ…", "ព័ត៌មាន", "កំហុស", "ការនាំចេញបានបញ្ចប់", "ឃ្លាំងគម្រោង");
+            Add("fa", "فارسی", "DSH Chat-History Manage — ابزار مدیریت تاریخچه چت", "پرونده", "ویرایش", "زبان", "راهنما", "درباره", "تأیید", "پوشه خروجی:", "مرور…", "باز کردن پوشه", "به‌روزرسانی فهرست", "انتخاب فایل نشست…", "خروجی و ذخیره", "موضوع", "شناسه نشست", "زمان", "آماده", "{0} نشست بارگذاری شد", "، خواندن موضوع‌ها…", "در حال بارگذاری نشست…", "اطلاعات", "خطا", "خروجی تکمیل شد", "مخزن پروژه");
+            Add("he", "עברית", "DSH Chat-History Manage — כלי ניהול היסטוריית צ'אט", "קובץ", "עריכה", "שפה", "עזרה", "אודות", "אישור", "תיקיית ייצוא:", "עיון…", "פתח תיקייה", "רענן רשימה", "בחר קובץ שיחה…", "ייצוא ושמירה", "נושא", "מזהה שיחה", "שעה", "מוכן", "{0} שיחות נטענו", ", קורא נושאים…", "טוען שיחה…", "מידע", "שגיאה", "הייצוא הושלם", "מאגר הפרויקט");
+            Add("az", "Azərbaycanca", "DSH Chat-History Manage — çat tarixi idarəetmə aləti", "Fayl", "Redaktə", "Dil", "Kömək", "Haqqında", "OK", "İxrac qovluğu:", "Gözdən keçir…", "Qovluğu aç", "Siyahını yenilə", "Sessiya faylı seç…", "İxrac et və saxla", "Mövzu", "Sessiya ID", "Vaxt", "Hazır", "{0} sessiya yükləndi", ", mövzular oxunur…", "Sessiya yüklənir…", "Məlumat", "Xəta", "İxrac tamamlandı", "Layihə deposu");
+            Add("kk", "Қазақша", "DSH Chat-History Manage — чат тарихын басқару құралы", "Файл", "Өңдеу", "Тіл", "Көмек", "Бағдарлама туралы", "ОК", "Экспорт қалтасы:", "Шолу…", "Қалтаны ашу", "Тізімді жаңарту", "Сессия файлын таңдау…", "Экспорттау және сақтау", "Тақырып", "Сессия ID", "Уақыт", "Дайын", "{0} сессия жүктелді", ", тақырыптар оқылуда…", "Сессия жүктелуде…", "Ақпарат", "Қате", "Экспорт аяқталды", "Жоба репозиторийі");
+            Add("uz", "O'zbekcha", "DSH Chat-History Manage — chat tarixini boshqarish vositasi", "Fayl", "Tahrirlash", "Til", "Yordam", "Haqida", "OK", "Eksport papkasi:", "Ko'rib chiqish…", "Papkani ochish", "Ro'yxatni yangilash", "Sessiya faylini tanlash…", "Eksport qilish va saqlash", "Mavzu", "Sessiya ID", "Vaqt", "Tayyor", "{0} sessiya yuklandi", ", mavzular o'qilmoqda…", "Sessiya yuklanmoqda…", "Ma'lumot", "Xato", "Eksport tugadi", "Loyiha ombori");
+            Add("mn", "Монгол", "DSH Chat-History Manage — чатын түүхийг удирдах хэрэгсэл", "Файл", "Засварлах", "Хэл", "Тусламж", "Тухай", "Болсон", "Экспорт хавтас:", "Үзэх…", "Хавтас нээх", "Жагсаалт сэргээх", "Сессийн файл сонгох…", "Экспорт хийх ба хадгалах", "Сэдэв", "Сессийн ID", "Цаг", "Бэлэн", "{0} сесс ачаалагдлаа", ", сэдвүүд уншигдаж байна…", "Сесс ачаалагдаж байна…", "Мэдээлэл", "Алдаа", "Экспорт дууслаа", "Төслийн агуулах");
+            Add("ka", "ქართული", "DSH Chat-History Manage — ჩატის ისტორიის მართვის ინსტრუმენტი", "ფაილი", "რედაქტირება", "ენა", "დახმარება", "პროგრამის შესახებ", "OK", "ექსპორტის საქაღალდე:", "დათვალიერება…", "საქაღალდის გახსნა", "სიის განახლება", "სესიის ფაილის არჩევა…", "ექსპორტი და შენახვა", "თემა", "სესიის ID", "დრო", "მზადაა", "{0} სესია ჩაიტვირთა", ", თემების კითხვა…", "სესიის ჩატვირთვა…", "ინფორმაცია", "შეცდომა", "ექსპორტი დასრულდა", "პროექტის საცავი");
+            Add("hy", "Հայերեն", "DSH Chat-History Manage — զրույցի պատմության կառավարման գործիք", "Ֆայլ", "Խմբագրել", "Լեզու", "Օգնություն", "Ծրագրի մասին", "OK", "Արտահանման թղթապանակ:", "Դիտել…", "Բացել թղթապանակ", "Թարմացնել ցուցակը", "Ընտրել նստաշրջանի ֆայլ…", "Արտահանել և պահել", "Թեմա", "Նստաշրջանի ID", "Ժամանակ", "Պատրաստ է", "Բեռնված է {0} նստաշրջան", ", թեմաների ընթերցում…", "Նստաշրջանի բեռնում…", "Տեղեկություն", "Սխալ", "Արտահանումն ավարտված է", "Նախագծի պահոց");
+            Add("sw", "Kiswahili", "DSH Chat-History Manage — chombo cha kusimamia historia ya gumzo", "Faili", "Hariri", "Lugha", "Msaada", "Kuhusu", "Sawa", "Folda ya kupeleka:", "Vinjari…", "Fungua folda", "Burudisha orodha", "Chagua faili la kikao…", "Peleka na uhifadhi", "Mada", "Kitambulisho cha kikao", "Wakati", "Tayari", "{0} vikao vimepakiwa", ", inasoma mada…", "Inapakia kikao…", "Taarifa", "Hitilafu", "Usafirishaji umekamilika", "Hifadhi ya mradi");
+            Add("af", "Afrikaans", "DSH Chat-History Manage — hulpmiddel vir bestuur van kletsgeskiedenis", "Lêer", "Wysig", "Taal", "Hulp", "Oor", "OK", "Uitvoer-gids:", "Blaai…", "Maak gids oop", "Verfris lys", "Kies sessielêer…", "Voer uit en stoor", "Onderwerp", "Sessie-ID", "Tyd", "Gereed", "{0} sessies gelaai", ", lees onderwerpe…", "Laai sessie…", "Inligting", "Fout", "Uitvoer voltooi", "Projekbewaarplek");
+            Add("fil", "Filipino", "DSH Chat-History Manage — tool sa pamamahala ng kasaysayan ng chat", "File", "I-edit", "Wika", "Tulong", "Tungkol", "OK", "Folder ng pag-export:", "Mag-browse…", "Buksan ang folder", "I-refresh ang listahan", "Pumili ng file ng session…", "I-export at i-save", "Paksa", "Session ID", "Oras", "Handa", "{0} session na na-load", ", nagbabasa ng mga paksa…", "Naglo-load ng session…", "Impormasyon", "Error", "Tapos na ang pag-export", "Repository ng proyekto");
+        }
+
+        private static void Add(string code, string native, params string[] vals)
+        {
+            Dictionary<string, string> d = new Dictionary<string, string>();
+            for (int i = 0; i < CoreKeys.Length && i < vals.Length; i++)
+                d[CoreKeys[i]] = vals[i];
+            Languages.Add(new Language(code, native, d));
+        }
+
+        public static Language ByCode(string code)
+        {
+            foreach (Language l in Languages)
+                if (l.Code == code) return l;
+            return null;
+        }
+
         public static string T(string key)
         {
-            Dictionary<string, string> dict = Current == "en" ? En : Zh;
             string v;
-            return dict.TryGetValue(key, out v) ? v : key;
+            Language cur = ByCode(Current);
+            if (cur != null && cur.Dict.TryGetValue(key, out v)) return v;
+            Language en = ByCode("en");
+            if (en != null && en.Dict.TryGetValue(key, out v)) return v;
+            return key;
         }
     }
 
@@ -961,7 +1082,7 @@ namespace DshChatHistoryManage
         private ToolStripMenuItem mFile, mEdit, mLang, mHelp;
         private ToolStripMenuItem filePick, fileRefresh, fileExport, fileExit;
         private ToolStripMenuItem editCopy, editClearCache;
-        private ToolStripMenuItem langZhItem, langEnItem;
+        private List<ToolStripMenuItem> langItems = new List<ToolStripMenuItem>();
         private ToolStripMenuItem aboutItem;
         // 主题缓存条目：修改时间（Unix 毫秒）+ 文件大小，两者都匹配才复用，避免文件被改写后误用旧主题
         private class TitleCacheEntry
@@ -1218,10 +1339,22 @@ namespace DshChatHistoryManage
             mEdit.DropDownItems.Add(editClearCache);
 
             mLang = new ToolStripMenuItem(Lang.T("menuLang"));
-            langZhItem = new ToolStripMenuItem(Lang.T("langZh"), null, delegate { ApplyLanguage("zh"); });
-            langEnItem = new ToolStripMenuItem(Lang.T("langEn"), null, delegate { ApplyLanguage("en"); });
-            mLang.DropDownItems.Add(langZhItem);
-            mLang.DropDownItems.Add(langEnItem);
+            ToolStripMenuItem grpCommon = new ToolStripMenuItem(Lang.T("langGroupCommon"));
+            ToolStripMenuItem grpEurope = new ToolStripMenuItem(Lang.T("langGroupEurope"));
+            ToolStripMenuItem grpAsia = new ToolStripMenuItem(Lang.T("langGroupAsia"));
+            ToolStripMenuItem grpAfrica = new ToolStripMenuItem(Lang.T("langGroupAfrica"));
+            foreach (string code in new[] { "zh", "en", "zh-TW", "ja", "ko", "fr", "de", "es", "pt", "ru", "it", "nl", "pl", "uk", "tr", "th", "vi", "id", "ms", "hi", "ar", "sv" })
+                grpCommon.DropDownItems.Add(MakeLangItem(code));
+            foreach (string code in new[] { "da", "no", "fi", "is", "el", "cs", "sk", "hu", "ro", "bg", "sr", "hr", "sl", "lt", "lv", "et", "ca", "gl", "eu", "eo" })
+                grpEurope.DropDownItems.Add(MakeLangItem(code));
+            foreach (string code in new[] { "bn", "ta", "te", "kn", "ml", "mr", "ne", "si", "my", "km", "fa", "he", "az", "kk", "uz", "mn", "ka", "hy" })
+                grpAsia.DropDownItems.Add(MakeLangItem(code));
+            foreach (string code in new[] { "sw", "af", "fil" })
+                grpAfrica.DropDownItems.Add(MakeLangItem(code));
+            mLang.DropDownItems.Add(grpCommon);
+            mLang.DropDownItems.Add(grpEurope);
+            mLang.DropDownItems.Add(grpAsia);
+            mLang.DropDownItems.Add(grpAfrica);
 
             mHelp = new ToolStripMenuItem(Lang.T("menuHelp"));
             aboutItem = new ToolStripMenuItem(Lang.T("about"), null, delegate { ShowAbout(); });
@@ -1242,6 +1375,17 @@ namespace DshChatHistoryManage
             {
                 f.ShowDialog(this);
             }
+        }
+
+        /// <summary>创建一个语言菜单项（原生语言名显示，点击切换语言）。</summary>
+        private ToolStripMenuItem MakeLangItem(string code)
+        {
+            Lang.Language l = Lang.ByCode(code);
+            ToolStripMenuItem it = new ToolStripMenuItem(l != null ? l.NativeName : code);
+            it.Tag = code;
+            it.Click += delegate { ApplyLanguage(code); };
+            langItems.Add(it);
+            return it;
         }
 
         /// <summary>应用界面语言：更新全部文案并持久化到配置。</summary>
@@ -1272,12 +1416,10 @@ namespace DshChatHistoryManage
             editCopy.Text = Lang.T("editCopy");
             editClearCache.Text = Lang.T("editClearCache");
             mLang.Text = Lang.T("menuLang");
-            langZhItem.Text = Lang.T("langZh");
-            langEnItem.Text = Lang.T("langEn");
+            foreach (ToolStripMenuItem it in langItems)
+                it.Checked = (string)it.Tag == lang;
             mHelp.Text = Lang.T("menuHelp");
             aboutItem.Text = Lang.T("about");
-            langZhItem.Checked = lang == "zh";
-            langEnItem.Checked = lang == "en";
             if (lnkGithub != null)
             {
                 lnkGithub.Text = Lang.T("linkGithub");
@@ -1713,7 +1855,7 @@ namespace DshChatHistoryManage
                         if (cfg.ContainsKey("lang"))
                         {
                             string l = Convert.ToString(cfg["lang"]);
-                            if (l == "zh" || l == "en") Lang.Current = l;
+                            if (Lang.ByCode(l) != null) Lang.Current = l;
                         }
                     }
                 }
