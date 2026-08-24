@@ -585,10 +585,38 @@ namespace DshChatHistoryExport
                 if (topic == null) pending.Add(new KeyValuePair<SessionInfo, ListViewItem>(si, it));
             }
             list.EndUpdate();
+            ResizeColumns();
             statusLabel.Text = "已加载 " + sessions.Count + " 个会话"
                 + (sessions.Count == 0 ? "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" : "")
                 + (pending.Count > 0 ? "，正在读取主题…" : "");
             if (pending.Count > 0) ScanTitles(pending);
+        }
+
+        /// <summary>
+        /// 按「表头 + 列内最宽内容」自适应列宽，保证主题 / 会话 ID / 时间完整显示。
+        /// 主题列上限 700px，防止个别超长主题把整列撑爆（其余行仍可横向滚动查看）。
+        /// </summary>
+        private void ResizeColumns()
+        {
+            try
+            {
+                using (Graphics g = list.CreateGraphics())
+                {
+                    for (int c = 0; c < list.Columns.Count; c++)
+                    {
+                        int w = TextRenderer.MeasureText(g, list.Columns[c].Text, list.Font).Width + 20;
+                        foreach (ListViewItem it in list.Items)
+                        {
+                            string txt = c < it.SubItems.Count ? it.SubItems[c].Text : "";
+                            int tw = TextRenderer.MeasureText(g, txt, list.Font).Width + 24;
+                            if (tw > w) w = tw;
+                        }
+                        if (c == 0 && w > 700) w = 700;
+                        list.Columns[c].Width = w;
+                    }
+                }
+            }
+            catch { }
         }
 
         /// <summary>后台逐个读取会话主题（解压 + 取最后一条 session/title），进度实时填回列表。</summary>
@@ -619,7 +647,11 @@ namespace DshChatHistoryExport
                         if (IsDisposed) return;
                         BeginInvoke((Action)delegate
                         {
-                            if (it.Tag == si && it.SubItems.Count > 0) it.SubItems[0].Text = topic;
+                            if (it.Tag == si && it.SubItems.Count > 0)
+                            {
+                                it.SubItems[0].Text = topic;
+                                ResizeColumns(); // 主题逐条填充时同步自适应列宽
+                            }
                         });
                     }
                     catch { }
