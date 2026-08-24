@@ -935,18 +935,12 @@ namespace DshChatHistoryManage
                     {
                         if (b.Kind == BlockKind.Tool)
                         {
-                            b.HeaderHeight = MeasureH(g, (b.Collapsed ? "▶ " : "▼ ") + b.Header, fToolHead, w);
-                            if (b.HasBold)
-                                b.DetailHeight = BuildBoldLines(g, b, b.Text, fToolDetail, w - 12);
-                            else
-                                b.DetailHeight = MeasureH(g, b.Text, fToolDetail, w - 12);
+                            b.HeaderHeight = fToolHead.Height + 10; // 折叠头单行
+                            b.DetailHeight = BuildBoldLines(g, b, b.Text, fToolDetail, w - 12);
                         }
                         else
                         {
-                            if (b.HasBold)
-                                b.Height = BuildBoldLines(g, b, b.Text, b.Font, w);
-                            else
-                                b.Height = MeasureH(g, b.Text, b.Font, w);
+                            b.Height = BuildBoldLines(g, b, b.Text, b.Font, w);
                         }
                     }
                 }
@@ -960,13 +954,6 @@ namespace DshChatHistoryManage
                 y += b.Height;
             }
             AutoScrollMinSize = new Size(0, y + 8);
-        }
-
-        private static int MeasureH(Graphics g, string text, Font font, int width)
-        {
-            if (string.IsNullOrEmpty(text)) return font.Height + 10;
-            SizeF sz = g.MeasureString(text, font, new SizeF(width, 1000000f));
-            return (int)Math.Ceiling(sz.Height) + 10; // +10 安全边距
         }
 
         // ---------- 行内粗体：解析 **xxx**，按词换行成行 ----------
@@ -1017,7 +1004,7 @@ namespace DshChatHistoryManage
                     words.Add(wd);
                 }
             }
-            // 3) 贪心换行；超宽词按字符拆
+            // 3) 贪心换行；超宽词按字符拆（代理对 emoji 必须整体拆，不能拆成两半）
             List<Word> line = new List<Word>();
             float lineW = 0f;
             for (int i = 0; i < words.Count; i++)
@@ -1025,10 +1012,15 @@ namespace DshChatHistoryManage
                 Word wd = words[i];
                 if (wd.Width > width)
                 {
-                    foreach (char ch in wd.Text)
+                    int ci = 0;
+                    while (ci < wd.Text.Length)
                     {
+                        int take = 1;
+                        if (char.IsHighSurrogate(wd.Text[ci]) && ci + 1 < wd.Text.Length) take = 2; // emoji 整体
+                        string ch = wd.Text.Substring(ci, take);
+                        ci += take;
                         Word cw = new Word();
-                        cw.Text = ch.ToString();
+                        cw.Text = ch;
                         cw.Font = wd.Font;
                         cw.Width = TextRenderer.MeasureText(g, cw.Text, wd.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
                         if (line.Count > 0 && lineW + cw.Width > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
@@ -1077,7 +1069,6 @@ namespace DshChatHistoryManage
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.Clear(BackColor);
-            e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             int scrollY = -AutoScrollPosition.Y;
             int viewH = ClientSize.Height;
             Graphics g = e.Graphics;
@@ -1089,37 +1080,15 @@ namespace DshChatHistoryManage
                 if (b.Kind == BlockKind.Tool)
                 {
                     string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
-                    DrawBlock(g, head, fToolHead, new RectangleF(PadX, by, layoutWidth, b.HeaderHeight), b.Color, b.UseGdi);
+                    TextRenderer.DrawText(g, head, fToolHead, new Point(PadX, by), b.Color,
+                        TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
                     if (!b.Collapsed)
-                    {
-                        if (b.HasBold && b.BoldLines != null)
-                            DrawBoldLines(g, b, PadX + 12, by + b.HeaderHeight, b.Color);
-                        else
-                            DrawBlock(g, b.Text, fToolDetail, new RectangleF(PadX + 12, by + b.HeaderHeight, layoutWidth - 12, b.DetailHeight), b.Color, b.UseGdi);
-                    }
+                        DrawBoldLines(g, b, PadX + 12, by + b.HeaderHeight, b.Color);
                 }
                 else
                 {
-                    if (b.HasBold && b.BoldLines != null)
-                        DrawBoldLines(g, b, PadX, by, b.Color);
-                    else
-                        DrawBlock(g, b.Text, b.Font, new RectangleF(PadX, by, layoutWidth, b.Height), b.Color, b.UseGdi);
+                    DrawBoldLines(g, b, PadX, by, b.Color);
                 }
-            }
-        }
-
-        private static void DrawBlock(Graphics g, string text, Font font, RectangleF rect, Color color, bool useGdi)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            if (useGdi)
-            {
-                TextRenderer.DrawText(g, text, font, Rectangle.Ceiling(rect), color,
-                    TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            }
-            else
-            {
-                using (SolidBrush brush = new SolidBrush(color))
-                    g.DrawString(text, font, brush, rect);
             }
         }
 
