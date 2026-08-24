@@ -605,8 +605,8 @@ namespace DshChatHistoryExport
                         string l2 = lines[i].Trim();
                         if (!l2.StartsWith("> ")) break;
                         string body = l2.Substring(2).TrimStart();
-                        if (body.StartsWith("🔧")) { body = "TOOL " + body.Substring(2).TrimStart(); if (name == null) name = FirstToken(body, "TOOL "); }
-                        else if (body.StartsWith("📦")) { body = "RESULT " + body.Substring(2).TrimStart(); if (status == null) status = body.StartsWith("RESULT OK") ? "OK" : "ERROR"; }
+                        if (body.StartsWith("🔧")) { if (name == null) name = FirstToken(body, "🔧"); } // 保留 emoji，仅提取工具名
+                        else if (body.StartsWith("📦")) { if (status == null) status = body.StartsWith("📦 OK") ? "OK" : "ERROR"; }
                         if (sb.Length > 0) sb.Append('\n');
                         sb.Append(Sanitize(body));
                         i++;
@@ -650,7 +650,7 @@ namespace DshChatHistoryExport
             return end < 0 ? r : r.Substring(0, end);
         }
 
-        /// <summary>清洗：emoji（代理对）降级为 ?，控制字符去除。</summary>
+        /// <summary>清洗：仅去除控制字符，保留 emoji（GDI 字体链接可渲染真字形）。</summary>
         private static string Sanitize(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
@@ -658,13 +658,6 @@ namespace DshChatHistoryExport
             for (int i = 0; i < s.Length; i++)
             {
                 char c = s[i];
-                if (char.IsHighSurrogate(c))
-                {
-                    if (i + 1 < s.Length && char.IsLowSurrogate(s[i + 1])) i++;
-                    sb.Append('?');
-                    continue;
-                }
-                if (char.IsLowSurrogate(c)) { sb.Append('?'); continue; }
                 if (c < 32 && c != '\t' && c != '\n') continue;
                 sb.Append(c);
             }
