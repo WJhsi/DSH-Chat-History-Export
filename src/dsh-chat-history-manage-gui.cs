@@ -1135,6 +1135,7 @@ namespace DshChatHistoryManage
         private ToolStripMenuItem filePick, fileRefresh, fileExport, fileExit;
         private ToolStripMenuItem editCopy, editClearCache;
         private List<ToolStripMenuItem> langItems = new List<ToolStripMenuItem>();
+        private ToolStripMenuItem langSystemItem; // 跟随系统菜单项（文字需随语言刷新）
         private ToolStripMenuItem aboutItem;
         // 主题缓存条目：修改时间（Unix 毫秒）+ 文件大小，两者都匹配才复用，避免文件被改写后误用旧主题
         private class TitleCacheEntry
@@ -1392,11 +1393,11 @@ namespace DshChatHistoryManage
 
             mLang = new ToolStripMenuItem(Lang.T("menuLang"));
             // 第一项：跟随系统（默认）
-            ToolStripMenuItem sysItem = new ToolStripMenuItem(Lang.T("langFollowSystem"));
-            sysItem.Tag = Lang.SystemCode;
-            sysItem.Click += delegate { ApplyLanguage(Lang.SystemCode); };
-            langItems.Add(sysItem);
-            mLang.DropDownItems.Add(sysItem);
+            langSystemItem = new ToolStripMenuItem(Lang.T("langFollowSystem"));
+            langSystemItem.Tag = Lang.SystemCode;
+            langSystemItem.Click += delegate { ApplyLanguage(Lang.SystemCode); };
+            langItems.Add(langSystemItem);
+            mLang.DropDownItems.Add(langSystemItem);
             mLang.DropDownItems.Add(new ToolStripSeparator());
             // 简体中文名，按拼音 A-Z 排序（中文（简体）→ Zhong 在 Z 区）
             foreach (string code in new[]
@@ -1473,6 +1474,7 @@ namespace DshChatHistoryManage
             editCopy.Text = Lang.T("editCopy");
             editClearCache.Text = Lang.T("editClearCache");
             mLang.Text = Lang.T("menuLang");
+            if (langSystemItem != null) langSystemItem.Text = Lang.T("langFollowSystem"); // 跟随系统文字随语言刷新
             foreach (ToolStripMenuItem it in langItems)
                 it.Checked = (string)it.Tag == lang;
             mHelp.Text = Lang.T("menuHelp");
