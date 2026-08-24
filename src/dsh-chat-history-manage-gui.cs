@@ -524,7 +524,8 @@ namespace DshChatHistoryManage
         }
     }
 
-    // ---------- 预览控件：自绘视图，工具调用块可点击折叠/展开，字体 Times New Roman ----------
+    // ---------- 预览控件：自绘视图，工具调用块可点击折叠/展开 ----------
+    // 字体方案：重点（标题）用黑体 SimHei，正文用微软雅黑 Microsoft YaHei UI
     class PreviewView : ScrollableControl
     {
         private enum BlockKind { Heading, SubHeading, Para, Tool }
@@ -553,18 +554,17 @@ namespace DshChatHistoryManage
         private const int PadX = 10;
         private const int MaxBlockChars = 6000; // 显示截断上限：限制 CJK 换行布局成本
         private long cacheBytes; // 位图缓存总字节，超限整体清空防内存膨胀
-        private Font fBase, fBold, fHead, fToolHead, fToolDetail;
+        private Font fBase, fHead, fToolHead, fToolDetail;
 
         public PreviewView()
         {
             BackColor = Color.White;
             AutoScroll = true;
             DoubleBuffered = true;
-            fBase = new Font("Times New Roman", 9.5f);
-            fBold = new Font("Times New Roman", 9.5f, FontStyle.Bold);
-            fHead = new Font("Times New Roman", 11f, FontStyle.Bold);
-            fToolHead = new Font("Times New Roman", 9f, FontStyle.Italic);
-            fToolDetail = new Font("Times New Roman", 8.5f);
+            fHead = new Font("SimHei", 11f);                              // 黑体：重点/标题
+            fBase = new Font("Microsoft YaHei UI", 9.5f);                 // 微软雅黑：正文
+            fToolHead = new Font("Microsoft YaHei UI", 9f, FontStyle.Italic);
+            fToolDetail = new Font("Microsoft YaHei UI", 8.5f);
         }
 
         /// <summary>displayMd 用于显示（可能截断），fullMd 是完整转录（供复制）。</summary>
@@ -614,7 +614,7 @@ namespace DshChatHistoryManage
                 }
                 else if (t.StartsWith("### "))
                 {
-                    blocks.Add(MakeBlock(BlockKind.SubHeading, CapText(Sanitize(t.Substring(4))), Color.FromArgb(46, 125, 50), fBold)); // 助手：绿
+                    blocks.Add(MakeBlock(BlockKind.SubHeading, CapText(Sanitize(t.Substring(4))), Color.FromArgb(46, 125, 50), fHead)); // 助手：绿（黑体重点）
                     i++;
                 }
                 else if (t.StartsWith("> "))
