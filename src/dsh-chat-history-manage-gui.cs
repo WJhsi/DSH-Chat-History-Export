@@ -931,14 +931,14 @@ namespace DshChatHistoryManage
                         {
                             b.HeaderHeight = MeasureH(g, (b.Collapsed ? "▶ " : "▼ ") + b.Header, fToolHead, w);
                             if (b.HasBold)
-                                b.DetailHeight = BuildBoldLines(b, b.Text, fToolDetail, w - 12);
+                                b.DetailHeight = BuildBoldLines(g, b, b.Text, fToolDetail, w - 12);
                             else
                                 b.DetailHeight = MeasureH(g, b.Text, fToolDetail, w - 12);
                         }
                         else
                         {
                             if (b.HasBold)
-                                b.Height = BuildBoldLines(b, b.Text, b.Font, w);
+                                b.Height = BuildBoldLines(g, b, b.Text, b.Font, w);
                             else
                                 b.Height = MeasureH(g, b.Text, b.Font, w);
                         }
@@ -973,8 +973,9 @@ namespace DshChatHistoryManage
         }
 
         /// <summary>把含 **粗体** 的文本按词换行成行并测量总高度，结果缓存在块上。
-        /// 测量与绘制都用 GDI（TextRenderer），自洽不会错位；空格保留在词内，避免手工补间距出现「两端对齐」假象。</summary>
-        private int BuildBoldLines(Block b, string text, Font baseFont, int width)
+        /// 测量与绘制都用 GDI（TextRenderer），且测量必须传同一个 Graphics——
+        /// 不带 Graphics 的 MeasureText 用默认 DC 度量（DPI/字体分辨率不同），宽度会偏大导致字间距过大。</summary>
+        private int BuildBoldLines(Graphics g, Block b, string text, Font baseFont, int width)
         {
             b.BoldLines = new List<List<Word>>();
             if (string.IsNullOrEmpty(text)) { b.BoldLines.Add(new List<Word>()); return baseFont.Height + 10; }
@@ -993,7 +994,7 @@ namespace DshChatHistoryManage
                 else cur.Append(text[i]);
             }
             if (cur.Length > 0) segs.Add(new KeyValuePair<string, bool>(cur.ToString(), bold));
-            // 2) 拆词（尾随空格保留在词内），用 GDI 单行测量
+            // 2) 拆词（尾随空格保留在词内），用与绘制相同的 Graphics 测量
             List<Word> words = new List<Word>();
             foreach (KeyValuePair<string, bool> seg in segs)
             {
@@ -1006,7 +1007,7 @@ namespace DshChatHistoryManage
                     Word wd = new Word();
                     wd.Text = wt;
                     wd.Font = f;
-                    wd.Width = TextRenderer.MeasureText(wt, f, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
+                    wd.Width = TextRenderer.MeasureText(g, wt, f, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
                     words.Add(wd);
                 }
             }
@@ -1023,7 +1024,7 @@ namespace DshChatHistoryManage
                         Word cw = new Word();
                         cw.Text = ch.ToString();
                         cw.Font = wd.Font;
-                        cw.Width = TextRenderer.MeasureText(cw.Text, wd.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
+                        cw.Width = TextRenderer.MeasureText(g, cw.Text, wd.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
                         if (line.Count > 0 && lineW + cw.Width > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
                         line.Add(cw);
                         lineW += cw.Width;
