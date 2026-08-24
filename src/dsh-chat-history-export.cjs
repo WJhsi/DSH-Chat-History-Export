@@ -69,49 +69,64 @@ function findSessionFile(input) {
   return hits[0];
 }
 
-// ---------- 会话主题 ----------
-// 取最后一条 session/title 事件的 data.title（与 DSH 侧边栏一致，last-wins）。
-function getTitle(raw) {
+// ---------- 会话元信息（主题 + 是否有聊天内容） ----------
+// title: 最后一条 session/title 事件的 data.title（与 DSH 侧边栏一致，last-wins），无则 null
+// hasContent: 是否存在真实的用户聊天内容（非插件注入、有文本的 user/message）
+function getMeta(raw) {
   let title = null;
+  let hasContent = false;
   for (const line of raw.split('\n')) {
-    if (line.indexOf('session/title') < 0) continue;
-    let e; try { e = JSON.parse(line); } catch { continue; }
-    if (e.type === 'session/title' && e.data && typeof e.data.title === 'string' && e.data.title) title = e.data.title;
+    if (line.indexOf('session/title') >= 0) {
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      if (e.type === 'session/title' && e.data && typeof e.data.title === 'string' && e.data.title) title = e.data.title;
+    } else if (line.indexOf('user/message') >= 0) {
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      if (e.type !== 'user/message' || !e.data) continue;
+      if (e.data.source && e.data.source.kind === 'plugin') continue; // 插件注入不算聊天内容
+      const text = (e.data.content || []).filter(b => b && b.type === 'text' && b.text).map(b => b.text).join('');
+      if (text.trim()) hasContent = true;
+    }
   }
-  return title;
+  return { title, hasContent };
 }
 
-// 会话主题：优先只解压最后一个 zstd 帧（主题事件总在文件尾部附近），找不到再全量解压兜底。
-function sessionTitleOf(file) {
+// 会话元信息：优先只解压最后一个 zstd 帧（主题事件总在文件尾部附近），
+// 尾帧命中主题即视为有内容直接返回；否则全量解压兜底（空白会话判定必须全量扫描）。
+function sessionMetaOf(file) {
   const buf = fs.readFileSync(file);
   if (buf.length > 4 && buf.readUInt32LE(0) === 0xfd2fb528) {
     // 从尾部往前找最后一个帧起始魔数；帧内巧合命中会解压失败，随即全量兜底
     for (let i = buf.length - 4; i >= 0; i--) {
       if (buf.readUInt32LE(i) === 0xfd2fb528) {
         try {
-          const t = getTitle(zstdDecompressSync(buf.subarray(i)).toString('utf8'));
-          if (t) return t;
+          const { title } = getMeta(zstdDecompressSync(buf.subarray(i)).toString('utf8'));
+          if (title) return { title, hasContent: true }; // 有主题必然有内容
         } catch { }
         break;
       }
     }
-    return getTitle(readSession(file));
+    return getMeta(readSession(file));
   }
-  return getTitle(buf.toString('utf8'));
+  return getMeta(buf.toString('utf8'));
 }
 
-// ---------- 主题磁盘缓存（与 GUI 同格式：{ 文件路径: { m: 修改时间ms, s: 大小, t: 主题 } }） ----------
+// ---------- 主题磁盘缓存（与 GUI 同格式，带版本号；条目含 c: 是否有内容） ----------
+const TITLE_CACHE_VERSION = 2;
 function titleCachePath() {
   return path.join(__dirname, 'dsh-chat-history-export.titles.json');
 }
 function loadTitleCache() {
-  try { return JSON.parse(fs.readFileSync(titleCachePath(), 'utf8')); } catch { return {}; }
+  try {
+    const raw = JSON.parse(fs.readFileSync(titleCachePath(), 'utf8'));
+    if (raw && raw.v === TITLE_CACHE_VERSION && raw.e && typeof raw.e === 'object') return raw.e;
+  } catch { }
+  return {};
 }
-function saveTitleCache(cache) {
-  try { fs.writeFileSync(titleCachePath(), JSON.stringify(cache), 'utf8'); } catch { }
+function saveTitleCache(entries) {
+  try { fs.writeFileSync(titleCachePath(), JSON.stringify({ v: TITLE_CACHE_VERSION, e: entries }), 'utf8'); } catch { }
 }
 
-// ---------- 列出所有已保存会话 ----------
+// ---------- 列出所有已保存会话（剔除无主题且无聊天内容的空白会话，附加 filtered 计数） ----------
 function listSessions() {
   const root = path.join(os.homedir(), '.dsh', 'sessions');
   if (!fs.existsSync(root)) return [];
@@ -133,12 +148,16 @@ function listSessions() {
   // 缓存命中（修改时间 + 大小一致）直接复用，只对新增/变化过的会话重新解压
   const cache = loadTitleCache();
   const missing = [];
+  let filtered = 0;
+  const kept = [];
   for (const s of out) {
     let st = null;
     try { st = fs.statSync(s.file); } catch { }
     const c = st ? cache[s.file] : null;
-    if (c && c.m === st.mtimeMs && c.s === st.size && typeof c.t === 'string') {
-      s.title = c.t || null;
+    if (c && c.m === st.mtimeMs && c.s === st.size && typeof c.t === 'string' && typeof c.c === 'boolean') {
+      if (c.t) { s.title = c.t; kept.push(s); }
+      else if (c.c) { s.title = null; kept.push(s); } // 有内容但暂无主题，保留
+      else filtered++;                                 // 缓存记录为空白会话：剔除
     } else {
       missing.push(s);
     }
@@ -146,15 +165,23 @@ function listSessions() {
   if (missing.length) {
     console.log('正在读取会话主题…');
     for (const s of missing) {
-      try { s.title = sessionTitleOf(s.file); } catch { s.title = null; }
       try {
-        const st = fs.statSync(s.file);
-        cache[s.file] = { m: st.mtimeMs, s: st.size, t: s.title || '' };
-      } catch { }
+        const meta = sessionMetaOf(s.file);
+        s.title = meta.title;
+        try {
+          const st = fs.statSync(s.file);
+          cache[s.file] = { m: st.mtimeMs, s: st.size, t: s.title || '', c: meta.hasContent };
+        } catch { }
+        if (!meta.title && !meta.hasContent) { filtered++; continue; } // 无主题且无内容：空白会话，剔除
+        kept.push(s);
+      } catch {
+        kept.push(s); // 读取失败：宁可保留显示
+      }
     }
     saveTitleCache(cache);
   }
-  return out;
+  kept.filtered = filtered;
+  return kept;
 }
 
 // ---------- Windows 文件选择器 ----------
@@ -296,6 +323,7 @@ function run(input, outArg) {
       const when = new Date(fs.statSync(s.file).mtime).toISOString().replace('T', ' ').slice(0, 16);
       console.log(`${String(i + 1).padStart(2)}) ${s.title ? s.title + ' | ' : ''}${s.id}  (${when})`);
     });
+    if (sessions.filtered) console.log(`（已剔除 ${sessions.filtered} 个空白会话：无主题且无聊天内容）`);
     const idx = parseInt(await ask('选择序号: '), 10);
     if (!idx || idx < 1 || idx > sessions.length) { console.log('无效序号'); process.exit(0); }
     input = sessions[idx - 1].file;

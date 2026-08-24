@@ -20,6 +20,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -221,39 +222,57 @@ namespace DshChatHistoryExport
         }
 
         /// <summary>
-        /// 取会话主题：最后一个 session/title 事件的 data.title（与 DSH 侧边栏一致，last-wins）。
-        /// 找不到返回 null。只解析包含 "session/title" 的行，避免整份大文本全量 JSON 解析。
+        /// 单趟扫描会话元信息：
+        ///   title      — 最后一个 session/title 事件的 data.title（与 DSH 侧边栏一致，last-wins），无则 null
+        ///   hasContent — 是否存在真实的用户聊天内容（非插件注入、有文本的 user/message）
+        /// 只解析包含 "session/title" 或 "user/message" 的行，避免整份大文本全量 JSON 解析。
         /// </summary>
-        public static string GetTitle(string raw)
+        public static void GetMeta(string raw, out string title, out bool hasContent)
         {
-            if (string.IsNullOrEmpty(raw)) return null;
-            string title = null;
+            title = null;
+            hasContent = false;
+            if (string.IsNullOrEmpty(raw)) return;
             JavaScriptSerializer ser = new JavaScriptSerializer();
             int idx = 0;
-            while ((idx = raw.IndexOf("session/title", idx, StringComparison.Ordinal)) >= 0)
+            while (idx < raw.Length)
             {
-                int ls = raw.LastIndexOf('\n', idx) + 1;
-                int le = raw.IndexOf('\n', idx);
+                int ti = raw.IndexOf("session/title", idx, StringComparison.Ordinal);
+                int ui = raw.IndexOf("user/message", idx, StringComparison.Ordinal);
+                int next;
+                bool isTitle;
+                if (ti < 0 && ui < 0) break;
+                if (ti >= 0 && (ui < 0 || ti < ui)) { next = ti; isTitle = true; }
+                else { next = ui; isTitle = false; }
+                int ls = raw.LastIndexOf('\n', next) + 1;
+                int le = raw.IndexOf('\n', next);
                 if (le < 0) le = raw.Length;
                 string line = raw.Substring(ls, le - ls).Trim();
-                idx += "session/title".Length;
+                idx = next + 1;
                 if (line.Length == 0) continue;
                 try
                 {
                     Dictionary<string, object> e = ser.DeserializeObject(line) as Dictionary<string, object>;
                     if (e == null) continue;
                     string t0 = e.ContainsKey("type") ? e["type"] as string : null;
-                    if (t0 == null || !"session/title".Equals(t0)) continue;
                     Dictionary<string, object> d = (e.ContainsKey("data") ? e["data"] : null) as Dictionary<string, object>;
-                    if (d != null && d.ContainsKey("title"))
+                    if (isTitle)
                     {
-                        string t = Convert.ToString(d["title"]);
-                        if (t != null && t.Length > 0) title = t; // last wins
+                        if ("session/title".Equals(t0) && d != null && d.ContainsKey("title"))
+                        {
+                            string t = Convert.ToString(d["title"]);
+                            if (t != null && t.Length > 0) title = t; // last wins
+                        }
+                    }
+                    else if ("user/message".Equals(t0) && d != null)
+                    {
+                        Dictionary<string, object> src = (d.ContainsKey("source") ? d["source"] : null) as Dictionary<string, object>;
+                        if (src != null && "plugin".Equals(src["kind"] as string)) continue; // 插件注入不算聊天内容
+                        string t = TextOf(d.ContainsKey("content") ? d["content"] : null).Trim();
+                        if (t.Length > 0) hasContent = true;
                     }
                 }
                 catch { }
             }
-            return title;
         }
 
         public static string BuildTranscript(string raw)
@@ -422,6 +441,7 @@ namespace DshChatHistoryExport
             { "statusLoaded", "已加载 {0} 个会话" },
             { "statusReading", "，正在读取主题…" },
             { "statusNoSessions", "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" },
+            { "statusFiltered", "（已剔除 {0} 个空白会话：无主题且无聊天内容）" },
             { "statusSelected", "已选择: " },
             { "statusGenerated", "已生成: " },
             { "msgInfo", "提示" },
@@ -467,6 +487,7 @@ namespace DshChatHistoryExport
             { "statusLoaded", "Loaded {0} sessions" },
             { "statusReading", ", reading topics…" },
             { "statusNoSessions", " (no ~/.dsh/sessions found — use “Choose session file…”)" },
+            { "statusFiltered", " ({0} blank session(s) filtered: no topic and no chat content)" },
             { "statusSelected", "Selected: " },
             { "statusGenerated", "Generated: " },
             { "msgInfo", "Info" },
@@ -524,10 +545,12 @@ namespace DshChatHistoryExport
             public long MtimeMs;
             public long Size;
             public string Title;
+            public bool HasContent; // 是否有真实聊天内容（用于剔除空白会话）
         }
         // 内存缓存（启动时从磁盘读入，扫描后写回磁盘，保证重进不重复解压）
         private Dictionary<string, TitleCacheEntry> titleCache = new Dictionary<string, TitleCacheEntry>();
         private int scanGen; // 刷新列表的代数，防止旧扫描的收尾覆盖新状态
+        private int filteredCount; // 被剔除的空白会话数（无主题且无聊天内容）
 
         private string ConfigPath
         {
@@ -539,6 +562,8 @@ namespace DshChatHistoryExport
             get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-export.titles.json"); }
         }
 
+        private const int TitleCacheVersion = 2; // 缓存格式版本，结构变化时旧缓存整体作废
+
         private void LoadTitleCache()
         {
             try
@@ -549,7 +574,12 @@ namespace DshChatHistoryExport
                 if (raw == null) return;
                 lock (titleCache)
                 {
-                    foreach (KeyValuePair<string, object> kv in raw)
+                    titleCache.Clear();
+                    object v;
+                    if (!raw.TryGetValue("v", out v) || Convert.ToInt32(v) != TitleCacheVersion) return; // 旧格式，作废重扫
+                    Dictionary<string, object> entries = (raw.ContainsKey("e") ? raw["e"] : null) as Dictionary<string, object>;
+                    if (entries == null) return;
+                    foreach (KeyValuePair<string, object> kv in entries)
                     {
                         Dictionary<string, object> e = kv.Value as Dictionary<string, object>;
                         if (e == null) continue;
@@ -557,6 +587,7 @@ namespace DshChatHistoryExport
                         ce.MtimeMs = e.ContainsKey("m") ? Convert.ToInt64(e["m"]) : 0;
                         ce.Size = e.ContainsKey("s") ? Convert.ToInt64(e["s"]) : 0;
                         ce.Title = e.ContainsKey("t") ? Convert.ToString(e["t"]) : "";
+                        ce.HasContent = e.ContainsKey("c") && Convert.ToBoolean(e["c"]);
                         titleCache[kv.Key] = ce;
                     }
                 }
@@ -568,7 +599,7 @@ namespace DshChatHistoryExport
         {
             try
             {
-                Dictionary<string, object> raw = new Dictionary<string, object>();
+                Dictionary<string, object> entries = new Dictionary<string, object>();
                 lock (titleCache)
                 {
                     foreach (KeyValuePair<string, TitleCacheEntry> kv in titleCache)
@@ -577,9 +608,13 @@ namespace DshChatHistoryExport
                         e["m"] = kv.Value.MtimeMs;
                         e["s"] = kv.Value.Size;
                         e["t"] = kv.Value.Title ?? "";
-                        raw[kv.Key] = e;
+                        e["c"] = kv.Value.HasContent;
+                        entries[kv.Key] = e;
                     }
                 }
+                Dictionary<string, object> raw = new Dictionary<string, object>();
+                raw["v"] = TitleCacheVersion;
+                raw["e"] = entries;
                 File.WriteAllText(CachePath, new JavaScriptSerializer().Serialize(raw), new UTF8Encoding(false));
             }
             catch { }
@@ -843,10 +878,12 @@ namespace DshChatHistoryExport
             }
             sessions.Sort(delegate (SessionInfo a, SessionInfo b) { return b.Time.CompareTo(a.Time); });
             int gen = ++scanGen;
+            filteredCount = 0;
             List<KeyValuePair<SessionInfo, ListViewItem>> pending = new List<KeyValuePair<SessionInfo, ListViewItem>>();
             foreach (SessionInfo si in sessions)
             {
                 string topic = null;
+                bool cachedBlank = false; // 缓存明确记录为空白会话（无主题且无内容）
                 long len = -1;
                 try { len = new FileInfo(si.File).Length; } catch { }
                 lock (titleCache)
@@ -855,8 +892,13 @@ namespace DshChatHistoryExport
                     if (titleCache.TryGetValue(si.File, out c)
                         && c.MtimeMs == new DateTimeOffset(si.Time).ToUnixTimeMilliseconds()
                         && (len < 0 || c.Size == len))
-                        topic = c.Title;
+                    {
+                        if (!string.IsNullOrEmpty(c.Title)) topic = c.Title;
+                        else if (c.HasContent) topic = ""; // 有内容但暂无主题，保留显示
+                        else cachedBlank = true;           // 无主题且无内容：空白会话，剔除
+                    }
                 }
+                if (cachedBlank) { filteredCount++; continue; } // 不加入列表
                 ListViewItem it = new ListViewItem(topic ?? "");
                 it.SubItems.Add(si.Id);
                 it.SubItems.Add(si.Time.ToString("yyyy-MM-dd HH:mm"));
@@ -866,8 +908,9 @@ namespace DshChatHistoryExport
             }
             list.EndUpdate();
             ResizeColumns();
-            statusLabel.Text = string.Format(Lang.T("statusLoaded"), sessions.Count)
-                + (sessions.Count == 0 ? Lang.T("statusNoSessions") : "")
+            statusLabel.Text = string.Format(Lang.T("statusLoaded"), sessions.Count - filteredCount)
+                + (sessions.Count - filteredCount == 0 ? Lang.T("statusNoSessions") : "")
+                + (filteredCount > 0 ? string.Format(Lang.T("statusFiltered"), filteredCount) : "")
                 + (pending.Count > 0 ? Lang.T("statusReading") : "");
             if (pending.Count > 0) ScanTitles(pending, gen);
         }
@@ -899,8 +942,7 @@ namespace DshChatHistoryExport
             catch { }
         }
 
-        /// <summary>后台逐个读取会话主题（解压 + 取最后一条 session/title），进度实时填回列表。</summary>
-        /// <summary>并行读取未缓存会话的主题（解压 + 取最后一条 session/title），进度实时填回列表，结束后写回磁盘缓存。</summary>
+        /// <summary>并行读取未缓存会话的元信息（主题 + 是否有聊天内容），进度实时填回列表；空白会话（无主题且无内容）剔除并写明；结束后写回磁盘缓存。</summary>
         private void ScanTitles(List<KeyValuePair<SessionInfo, ListViewItem>> pending, int gen)
         {
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
@@ -910,34 +952,56 @@ namespace DshChatHistoryExport
                     SessionInfo si = pair.Key;
                     ListViewItem it = pair.Value;
                     string topic = null;
+                    bool blank = false;
                     try
                     {
                         DateTime mt = File.GetLastWriteTime(si.File);
                         long len = -1;
                         try { len = new FileInfo(si.File).Length; } catch { }
+                        bool cached = false;
                         lock (titleCache)
                         {
                             TitleCacheEntry c;
                             if (titleCache.TryGetValue(si.File, out c)
                                 && c.MtimeMs == new DateTimeOffset(mt).ToUnixTimeMilliseconds()
                                 && (len < 0 || c.Size == len))
-                                topic = c.Title;
+                            {
+                                cached = true;
+                                if (!string.IsNullOrEmpty(c.Title)) topic = c.Title;
+                                else if (c.HasContent) topic = "";
+                                else blank = true;
+                            }
                         }
-                        if (topic == null)
+                        if (!cached)
                         {
                             string raw = SessionReader.ReadSession(si.File);
-                            topic = SessionReader.GetTitle(raw) ?? "";
+                            string t;
+                            bool hasContent;
+                            SessionReader.GetMeta(raw, out t, out hasContent);
+                            topic = t ?? "";
                             TitleCacheEntry ce = new TitleCacheEntry();
                             ce.MtimeMs = new DateTimeOffset(mt).ToUnixTimeMilliseconds();
                             ce.Size = len;
                             ce.Title = topic;
+                            ce.HasContent = hasContent;
                             lock (titleCache) titleCache[si.File] = ce;
+                            if (!hasContent && string.IsNullOrEmpty(topic)) blank = true; // 无主题且无内容：空白会话
                         }
                         si.Title = topic;
                         if (IsDisposed) return;
                         BeginInvoke((Action)delegate
                         {
-                            if (it.Tag == si && it.SubItems.Count > 0)
+                            if (blank)
+                            {
+                                // 从列表剔除空白会话，并在状态栏写明
+                                list.Items.Remove(it);
+                                Interlocked.Increment(ref filteredCount);
+                                statusLabel.Text = string.Format(Lang.T("statusLoaded"), sessions.Count - filteredCount)
+                                    + (sessions.Count - filteredCount == 0 ? Lang.T("statusNoSessions") : "")
+                                    + (filteredCount > 0 ? string.Format(Lang.T("statusFiltered"), filteredCount) : "");
+                                ResizeColumns();
+                            }
+                            else if (it.Tag == si && it.SubItems.Count > 0)
                             {
                                 it.SubItems[0].Text = topic;
                                 ResizeColumns(); // 主题逐条填充时同步自适应列宽
@@ -950,7 +1014,9 @@ namespace DshChatHistoryExport
                 if (IsDisposed || gen != scanGen) return;
                 BeginInvoke((Action)delegate
                 {
-                    statusLabel.Text = string.Format(Lang.T("statusLoaded"), sessions.Count);
+                    statusLabel.Text = string.Format(Lang.T("statusLoaded"), sessions.Count - filteredCount)
+                        + (sessions.Count - filteredCount == 0 ? Lang.T("statusNoSessions") : "")
+                        + (filteredCount > 0 ? string.Format(Lang.T("statusFiltered"), filteredCount) : "");
                 });
             });
         }

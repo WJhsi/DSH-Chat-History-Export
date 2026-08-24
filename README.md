@@ -58,5 +58,6 @@ recover\
 
 - `dsh-chat-history-export.config.json` is a machine-local runtime config (export directory); it is not distributed with the program.
 - Session topics are cached in `dsh-chat-history-export.titles.json` next to the exe (keyed by file mtime + size), so relaunching shows topics instantly; only changed/new sessions are re-read. Delete the file to rebuild the cache.
+- Blank sessions (no topic and no chat content — just an empty session header) are hidden from the list; the status bar reports how many were filtered.
 - Session files use DSH's private format (zstd-compressed JSONL event stream). This tool only **reads** them and never modifies any session file.
 - On a crash, error details are written to `%TEMP%\dsh-chat-history-export-crash.log` for troubleshooting.
