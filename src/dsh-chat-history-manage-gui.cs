@@ -1,4 +1,4 @@
-// dsh-chat-history-manage-gui.cs — DSH Chat-History Manage：管理 DSH 聊天记录（Win32 GUI 程序，单文件）
+﻿// dsh-chat-history-manage-gui.cs — DSH Chat-History Manage：管理 DSH 聊天记录（Win32 GUI 程序，单文件）
 //
 // 编译（Windows 自带 .NET Framework 4.x，无需安装运行时）:
 //   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /unsafe /codepage:65001
@@ -1151,13 +1151,13 @@ namespace DshChatHistoryManage
             desc.TextAlign = ContentAlignment.TopLeft;
 
             LinkLabel gh = new LinkLabel();
-            gh.Text = "GitHub: WJhsi/DSH-Chat-History-Export"; // 短格式，避免溢出
+            gh.Text = "GitHub: WJhsi/DSH-Chat-History-Manage"; // 短格式，避免溢出
             gh.AutoSize = true;
             gh.LinkBehavior = LinkBehavior.HoverUnderline;
             gh.Location = new Point(24, 160);
             ToolTip ghTip = new ToolTip();
-            ghTip.SetToolTip(gh, "https://github.com/WJhsi/DSH-Chat-History-Export");
-            gh.LinkClicked += delegate { Open("https://github.com/WJhsi/DSH-Chat-History-Export"); };
+            ghTip.SetToolTip(gh, "https://github.com/WJhsi/DSH-Chat-History-Manage");
+            gh.LinkClicked += delegate { Open("https://github.com/WJhsi/DSH-Chat-History-Manage"); };
 
             LinkLabel site = new LinkLabel();
             site.Text = "www.hsij.cn";
@@ -1426,8 +1426,8 @@ namespace DshChatHistoryManage
             lnkGithub.ForeColor = Color.FromArgb(0, 102, 204);
             lnkGithub.Font = new Font(Font, FontStyle.Underline);
             lnkGithub.Margin = new Padding(8, 0, 4, 0);
-            lnkGithub.ToolTipText = "https://github.com/WJhsi/DSH-Chat-History-Export";
-            lnkGithub.Click += delegate { OpenUrl("https://github.com/WJhsi/DSH-Chat-History-Export"); };
+            lnkGithub.ToolTipText = "https://github.com/WJhsi/DSH-Chat-History-Manage";
+            lnkGithub.Click += delegate { OpenUrl("https://github.com/WJhsi/DSH-Chat-History-Manage"); };
             lnkGithub.MouseEnter += delegate { status.Cursor = Cursors.Hand; };  // 悬停变手型（选择光标）
             lnkGithub.MouseLeave += delegate { status.Cursor = Cursors.Default; };
             lnkSite = new ToolStripStatusLabel();
