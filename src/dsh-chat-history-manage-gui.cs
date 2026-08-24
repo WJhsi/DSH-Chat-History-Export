@@ -1171,15 +1171,11 @@ namespace DshChatHistoryManage
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
+            // 不用透明背景（透明在容器里重绘会产生残影/鬼影），
+            // 改为与容器同色填充：圆角外视觉上即“透出”，且无重绘痕迹
+            BackColor = UiTheme.Window;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
-                | ControlStyles.UserPaint | ControlStyles.ResizeRedraw
-                | ControlStyles.SupportsTransparentBackColor, true);
-            BackColor = Color.Transparent; // 圆角外区域透出父背景（否则露出灰色底）
-        }
-
-        protected override void OnPaintBackground(PaintEventArgs pevent)
-        {
-            // 不填充背景，让圆角外透出容器颜色
+                | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
         }
 
         protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hovered = true; Invalidate(); }
@@ -1235,8 +1231,9 @@ namespace DshChatHistoryManage
         public RoundedTextBox()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint, true);
-            BackColor = Color.Transparent; // 圆角外透出容器背景
+            SetStyle(ControlStyles.UserPaint, true);
+            // 与容器同色填充（不用透明背景，避免重绘残影）
+            BackColor = UiTheme.Window;
             inner = new TextBox();
             inner.BorderStyle = BorderStyle.None;
             inner.BackColor = Color.White;
