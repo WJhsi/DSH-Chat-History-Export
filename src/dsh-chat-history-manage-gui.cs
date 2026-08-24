@@ -15,6 +15,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -447,7 +448,8 @@ namespace DshChatHistoryManage
     // ---------- 界面语言（60+ 常用语言，缺失键回退英文） ----------
     static class Lang
     {
-        public static string Current = "zh"; // 当前语言代码，启动时从配置读取
+        public const string SystemCode = "system"; // 跟随系统语言
+        public static string Current = SystemCode; // 当前语言代码（默认跟随系统），启动时从配置读取
 
         public class Language
         {
@@ -499,6 +501,7 @@ namespace DshChatHistoryManage
             { "langEn", "English" },
             { "menuHelp", "帮助" },
             { "about", "关于" },
+            { "langFollowSystem", "跟随系统" },
             { "langGroupCommon", "常用" },
             { "langGroupEurope", "欧洲" },
             { "langGroupAsia", "亚洲·中东" },
@@ -559,6 +562,7 @@ namespace DshChatHistoryManage
             { "langEn", "English" },
             { "menuHelp", "&Help" },
             { "about", "&About" },
+            { "langFollowSystem", "&Follow System" },
             { "langGroupCommon", "Common" },
             { "langGroupEurope", "Europe" },
             { "langGroupAsia", "Asia & Middle East" },
@@ -679,10 +683,32 @@ namespace DshChatHistoryManage
             return null;
         }
 
+        /// <summary>按系统区域自动匹配语言：zh-CN→简体，zh-TW/HK→繁体，其余按 ISO 码匹配，不匹配回退英文。</summary>
+        public static string ResolveSystemLanguage()
+        {
+            try
+            {
+                CultureInfo ci = CultureInfo.CurrentUICulture;
+                string name = ci.Name;
+                if (name.StartsWith("zh"))
+                {
+                    if (name.StartsWith("zh-Hant") || name.StartsWith("zh-HK") || name.StartsWith("zh-TW") || name.StartsWith("zh-MO"))
+                        return "zh-TW";
+                    return "zh";
+                }
+                string two = ci.TwoLetterISOLanguageName;
+                if (two == "nb" || two == "nn") return "no";   // 挪威语
+                if (two == "fil") return "fil";                // 菲律宾语
+                return ByCode(two) != null ? two : "en";
+            }
+            catch { return "en"; }
+        }
+
         public static string T(string key)
         {
             string v;
-            Language cur = ByCode(Current);
+            string code = Current == SystemCode ? ResolveSystemLanguage() : Current;
+            Language cur = ByCode(code);
             if (cur != null && cur.Dict.TryGetValue(key, out v)) return v;
             Language en = ByCode("en");
             if (en != null && en.Dict.TryGetValue(key, out v)) return v;
@@ -1339,6 +1365,13 @@ namespace DshChatHistoryManage
             mEdit.DropDownItems.Add(editClearCache);
 
             mLang = new ToolStripMenuItem(Lang.T("menuLang"));
+            // 第一项：跟随系统（默认）
+            ToolStripMenuItem sysItem = new ToolStripMenuItem(Lang.T("langFollowSystem"));
+            sysItem.Tag = Lang.SystemCode;
+            sysItem.Click += delegate { ApplyLanguage(Lang.SystemCode); };
+            langItems.Add(sysItem);
+            mLang.DropDownItems.Add(sysItem);
+            mLang.DropDownItems.Add(new ToolStripSeparator());
             // 按语言英文名 A-Z 排序（显示原生名）
             foreach (string code in new[]
             {
@@ -1848,7 +1881,7 @@ namespace DshChatHistoryManage
                         if (cfg.ContainsKey("lang"))
                         {
                             string l = Convert.ToString(cfg["lang"]);
-                            if (Lang.ByCode(l) != null) Lang.Current = l;
+                            if (l == Lang.SystemCode || Lang.ByCode(l) != null) Lang.Current = l;
                         }
                     }
                 }
