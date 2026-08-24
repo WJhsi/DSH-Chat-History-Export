@@ -1163,21 +1163,19 @@ namespace DshChatHistoryManage
         public UiMenuRenderer() : base(new UiColorTable()) { }
     }
 
-    /// <summary>自绘圆角矩形按钮（大 R 角或胶囊形，悬停/按下变色）。</summary>
+    /// <summary>自绘圆角矩形按钮（长方形 + 大 R 角，悬停/按下变色）。</summary>
     class RoundedButton : Button
     {
         private bool hovered;
         private bool pressed;
         public bool Primary { get; set; } // 主按钮：强调色实底白字
-        public bool Capsule { get; set; } // 胶囊形：两端全圆
 
         public RoundedButton()
         {
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
-            // 不用透明背景（透明在容器里重绘会产生残影/鬼影），
-            // 改为与容器同色填充：圆角外视觉上即“透出”，且无重绘痕迹
+            // 与容器同色填充：圆角外视觉上即“透出”，且无重绘痕迹
             BackColor = UiTheme.Window;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
@@ -1193,7 +1191,7 @@ namespace DshChatHistoryManage
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle rc = ClientRectangle;
             rc.Inflate(-1, -1);
-            int r = Capsule ? rc.Height / 2 : Math.Max(8, rc.Height / 2 - 2); // 胶囊或大圆角
+            int r = Math.Min(10, rc.Height / 2); // 长方形 + 大圆角（不是胶囊）
             using (GraphicsPath path = RoundedRect(rc, r))
             {
                 Color bg = Primary
@@ -1264,7 +1262,7 @@ namespace DshChatHistoryManage
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle rc = ClientRectangle;
             rc.Inflate(-1, -1);
-            int r = rc.Height / 2; // 胶囊形：两端全圆
+            int r = Math.Min(10, rc.Height / 2); // 长方形 + 大圆角（不是胶囊）
             using (GraphicsPath path = RoundedRectPath(rc, r))
             {
                 using (SolidBrush br = new SolidBrush(Color.White))
@@ -1539,8 +1537,8 @@ namespace DshChatHistoryManage
             dirBox.Dock = DockStyle.Fill;
             dirBox.MinimumSize = new Size(0, 30); // 锁定高度，避免撑高布局行
             dirBox.MaximumSize = new Size(0, 30);
-            btnBrowse = MkButton(Lang.T("browse"), 84, false, true);      // 目录按钮：胶囊形
-            btnOpenDir = MkButton(Lang.T("openDir"), 92, false, true);    // 目录按钮：胶囊形
+            btnBrowse = MkButton(Lang.T("browse"), 84);
+            btnOpenDir = MkButton(Lang.T("openDir"), 92);
             dirRow.Controls.Add(lb, 0, 0);
             dirRow.Controls.Add(dirBox, 1, 0);
             dirRow.Controls.Add(btnBrowse, 2, 0);
@@ -1792,7 +1790,7 @@ namespace DshChatHistoryManage
             catch { }
         }
 
-        private static Button MkButton(string text, int width, bool primary = false, bool capsule = false)
+        private static Button MkButton(string text, int width, bool primary = false)
         {
             RoundedButton b = new RoundedButton();
             b.Text = text;
@@ -1800,7 +1798,6 @@ namespace DshChatHistoryManage
             b.Height = 30;
             b.Margin = new Padding(0, 0, 8, 0);
             b.Primary = primary;
-            b.Capsule = capsule;
             if (!primary) b.ForeColor = UiTheme.Text;
             return b;
         }
