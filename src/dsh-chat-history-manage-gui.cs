@@ -491,6 +491,7 @@ namespace DshChatHistoryManage
             { "menuEdit", "编辑" },
             { "menuLang", "语言" },
             { "filePick", "选择会话文件…" },
+            { "filePickDir", "选择会话目录…" },
             { "fileRefresh", "刷新列表" },
             { "fileExport", "导出并保存" },
             { "fileExit", "退出" },
@@ -526,6 +527,8 @@ namespace DshChatHistoryManage
             { "msgExportDone", "导出完成" },
             { "msgOpenFolder", "已生成:\n{0}\n\n是否打开所在文件夹？" },
             { "msgNoSession", "请先在左侧列表选择一个会话，或点“选择会话文件…”" },
+            { "msgNoSessionsDir", "未找到 DSH 会话目录：\n{0}\n\n是否手动选择目录？" },
+            { "msgPickSessionsDir", "选择 DSH 会话目录（应包含 session-* 子目录）" },
             { "msgNoDir", "请先设置导出目录" },
             { "msgReadFail", "读取失败:\n" },
             { "msgExportFail", "导出失败:\n" },
@@ -552,6 +555,7 @@ namespace DshChatHistoryManage
             { "menuEdit", "&Edit" },
             { "menuLang", "&Language" },
             { "filePick", "&Choose session file…" },
+            { "filePickDir", "Choose sessions f&older…" },
             { "fileRefresh", "&Refresh list" },
             { "fileExport", "&Export and Save" },
             { "fileExit", "E&xit" },
@@ -587,6 +591,8 @@ namespace DshChatHistoryManage
             { "msgExportDone", "Export complete" },
             { "msgOpenFolder", "Generated:\n{0}\n\nOpen the containing folder?" },
             { "msgNoSession", "Please select a session from the list, or use “Choose session file…”" },
+            { "msgNoSessionsDir", "DSH sessions folder not found:\n{0}\n\nChoose it manually?" },
+            { "msgPickSessionsDir", "Choose the DSH sessions folder (should contain session-* subfolders)" },
             { "msgNoDir", "Please set the export directory first" },
             { "msgReadFail", "Failed to read:\n" },
             { "msgExportFail", "Export failed:\n" },
@@ -1245,6 +1251,9 @@ namespace DshChatHistoryManage
         private ToolStripMenuItem editCopy, editClearCache;
         private List<ToolStripMenuItem> langItems = new List<ToolStripMenuItem>();
         private ToolStripMenuItem langSystemItem; // 跟随系统菜单项（文字需随语言刷新）
+        private ToolStripMenuItem filePickDir;    // 文件 → 选择会话目录
+        private string sessionsDirCfg = "";       // 手动选择的会话目录（配置记忆）
+        private string sessionsRoot = "";         // 解析后的会话根目录
         private ToolStripMenuItem aboutItem;
         // 主题缓存条目：修改时间（Unix 毫秒）+ 文件大小，两者都匹配才复用，避免文件被改写后误用旧主题
         private class TitleCacheEntry
@@ -1482,11 +1491,13 @@ namespace DshChatHistoryManage
 
             mFile = new ToolStripMenuItem(Lang.T("menuFile"));
             filePick = new ToolStripMenuItem(Lang.T("filePick"), null, delegate { PickFile(); });
+            filePickDir = new ToolStripMenuItem(Lang.T("filePickDir"), null, delegate { if (PickSessionsRoot()) LoadSessions(); });
             fileRefresh = new ToolStripMenuItem(Lang.T("fileRefresh"), null, delegate { LoadSessions(); });
             fileRefresh.ShortcutKeys = Keys.F5;
             fileExport = new ToolStripMenuItem(Lang.T("fileExport"), null, delegate { Export(); });
             fileExit = new ToolStripMenuItem(Lang.T("fileExit"), null, delegate { Close(); });
             mFile.DropDownItems.Add(filePick);
+            mFile.DropDownItems.Add(filePickDir);
             mFile.DropDownItems.Add(fileRefresh);
             mFile.DropDownItems.Add(fileExport);
             mFile.DropDownItems.Add(new ToolStripSeparator());
@@ -1571,6 +1582,7 @@ namespace DshChatHistoryManage
             ResizeColumns();
             mFile.Text = Lang.T("menuFile");
             filePick.Text = Lang.T("filePick");
+            filePickDir.Text = Lang.T("filePickDir");
             fileRefresh.Text = Lang.T("fileRefresh");
             fileExport.Text = Lang.T("fileExport");
             fileExit.Text = Lang.T("fileExit");
@@ -1623,12 +1635,64 @@ namespace DshChatHistoryManage
             return b;
         }
 
+        /// <summary>
+        /// 自动定位 DSH 会话根目录，优先级：
+        /// 1) 手动选择的目录（配置记忆）2) $DSH_HOME 环境变量 3) 默认 ~/.dsh/sessions
+        /// </summary>
+        private string ResolveSessionsRoot()
+        {
+            if (!string.IsNullOrEmpty(sessionsDirCfg) && Directory.Exists(sessionsDirCfg))
+                return sessionsDirCfg;
+            string envHome = Environment.GetEnvironmentVariable("DSH_HOME");
+            if (!string.IsNullOrWhiteSpace(envHome))
+            {
+                string p = Path.Combine(envHome.Trim(), "sessions");
+                if (Directory.Exists(p)) return p;
+            }
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
+        }
+
+        /// <summary>弹目录选择器手动指定会话目录；成功则记忆到配置并返回 true。</summary>
+        private bool PickSessionsRoot()
+        {
+            using (FolderBrowserDialog fbd = new FolderBrowserDialog())
+            {
+                fbd.Description = Lang.T("msgPickSessionsDir");
+                if (!string.IsNullOrEmpty(sessionsRoot) && Directory.Exists(sessionsRoot))
+                    fbd.SelectedPath = sessionsRoot;
+                else if (!string.IsNullOrEmpty(sessionsDirCfg) && Directory.Exists(sessionsDirCfg))
+                    fbd.SelectedPath = sessionsDirCfg;
+                if (fbd.ShowDialog(this) != DialogResult.OK) return false;
+                sessionsDirCfg = fbd.SelectedPath;
+                sessionsRoot = sessionsDirCfg;
+                SaveConfig(dirBox.Text.Trim()); // 记住会话目录
+                return true;
+            }
+        }
+
         private void LoadSessions()
         {
             sessions = new List<SessionInfo>();
             list.BeginUpdate();
             list.Items.Clear();
-            string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
+            sessionsRoot = ResolveSessionsRoot();
+            if (!Directory.Exists(sessionsRoot))
+            {
+                list.EndUpdate();
+                // 自动查找失败：提示用户手动选择
+                if (MessageBox.Show(this, string.Format(Lang.T("msgNoSessionsDir"), sessionsRoot), Lang.T("msgInfo"),
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    if (PickSessionsRoot())
+                    {
+                        LoadSessions();
+                        return;
+                    }
+                }
+                statusLabel.Text = Lang.T("statusNoSessions");
+                return;
+            }
+            string root = sessionsRoot;
             if (Directory.Exists(root))
             {
                 Stack<string> dirs = new Stack<string>();
@@ -1898,7 +1962,8 @@ namespace DshChatHistoryManage
             {
                 ofd.Title = Lang.T("pickDialogTitle");
                 ofd.Filter = Lang.T("pickDialogFilter");
-                ofd.InitialDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
+                ofd.InitialDirectory = Directory.Exists(sessionsRoot) ? sessionsRoot
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
                 if (ofd.ShowDialog(this) != DialogResult.OK) return;
                 pickedFile = ofd.FileName;
                 list.SelectedItems.Clear();
@@ -2020,6 +2085,11 @@ namespace DshChatHistoryManage
                             string l = Convert.ToString(cfg["lang"]);
                             if (l == Lang.SystemCode || Lang.ByCode(l) != null) Lang.Current = l;
                         }
+                        if (cfg.ContainsKey("sessionsDir"))
+                        {
+                            string d = Convert.ToString(cfg["sessionsDir"]);
+                            if (Directory.Exists(d)) sessionsDirCfg = d;
+                        }
                     }
                 }
             }
@@ -2033,6 +2103,7 @@ namespace DshChatHistoryManage
                 Dictionary<string, object> cfg = new Dictionary<string, object>();
                 cfg["exportDir"] = exportDir;
                 cfg["lang"] = Lang.Current;
+                if (!string.IsNullOrEmpty(sessionsDirCfg)) cfg["sessionsDir"] = sessionsDirCfg;
                 File.WriteAllText(ConfigPath, new JavaScriptSerializer().Serialize(cfg), new UTF8Encoding(false));
             }
             catch { }

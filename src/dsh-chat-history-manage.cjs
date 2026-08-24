@@ -46,13 +46,37 @@ if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
   return null;
 }
 
+// ---------- 会话根目录：配置记忆 > $DSH_HOME > 默认 ~/.dsh/sessions；找不到可手动选择 ----------
+function resolveSessionsRoot() {
+  const cfg = loadConfig();
+  if (cfg.sessionsDir && fs.existsSync(cfg.sessionsDir)) return cfg.sessionsDir;
+  const envHome = process.env.DSH_HOME;
+  if (envHome && envHome.trim()) {
+    const p = path.join(envHome.trim(), 'sessions');
+    if (fs.existsSync(p)) return p;
+  }
+  return path.join(os.homedir(), '.dsh', 'sessions');
+}
+
+function pickSessionsRoot() {
+  const picked = pickFolderViaDialog();
+  if (picked) {
+    const cfg = loadConfig();
+    cfg.sessionsDir = picked;
+    saveConfig(cfg);
+  }
+  return picked;
+}
+
 // ---------- 定位会话文件 ----------
 function findSessionFile(input) {
   if (fs.existsSync(input) && fs.statSync(input).isFile()) return input;
-  const root = path.join(os.homedir(), '.dsh', 'sessions');
+  let root = resolveSessionsRoot();
   if (!fs.existsSync(root)) {
-    console.error('找不到会话目录: ' + root);
-    process.exit(1);
+    console.log('找不到会话目录: ' + root);
+    console.log('是否手动选择会话目录？');
+    const picked = pickSessionsRoot();
+    if (picked) { root = picked; } else { process.exit(1); }
   }
   const hits = [];
   (function walk(dir) {
@@ -128,8 +152,14 @@ function saveTitleCache(entries) {
 
 // ---------- 列出所有已保存会话（剔除无主题且无聊天内容的空白会话，附加 filtered 计数） ----------
 function listSessions() {
-  const root = path.join(os.homedir(), '.dsh', 'sessions');
-  if (!fs.existsSync(root)) return [];
+  let root = resolveSessionsRoot();
+  if (!fs.existsSync(root)) {
+    console.log('找不到会话目录: ' + root);
+    console.log('是否手动选择会话目录？');
+    const picked = pickSessionsRoot();
+    if (!picked) return [];
+    root = picked;
+  }
   const out = [];
   (function walk(dir) {
     let entries;
