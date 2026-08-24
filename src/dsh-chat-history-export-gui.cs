@@ -405,6 +405,72 @@ namespace DshChatHistoryExport
             try { return new JavaScriptSerializer().Serialize(o); }
             catch { return Convert.ToString(o); }
         }
+
+        // ---------- 预览渲染：把转录 Markdown 转成带格式的 RTF（标题着色加粗、工具调用等宽灰字缩进） ----------
+        public static string BuildPreviewRtf(string md)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append(@"{\rtf1\ansi\deff0");
+            sb.Append(@"{\fonttbl{\f0 Microsoft YaHei UI;}{\f1 Consolas;}}");
+            sb.Append(@"{\colortbl ;\red31\green78\blue121;\red46\green125\blue50;\red128\green128\blue128;\red192\green0\blue0;\red178\green107\blue0;}");
+            sb.Append(@"\viewkind4\uc1\pard\f0\fs19 ");
+            bool first = true;
+            foreach (string rawLine in md.Split('\n'))
+            {
+                string line = rawLine.TrimEnd('\r');
+                if (line.Length == 0)
+                {
+                    if (!first) sb.Append(@"\par ");
+                    continue;
+                }
+                if (line.StartsWith("## "))
+                {
+                    string body = line.Substring(3);
+                    string color = @"\cf1 ";
+                    if (body.StartsWith("⏳")) color = @"\cf5 ";
+                    else if (body.StartsWith("❌")) color = @"\cf4 ";
+                    sb.Append(@"\par \b\fs22 ").Append(color).Append(RtfEscape(body)).Append(@"\b0\fs19\par ");
+                }
+                else if (line.StartsWith("### "))
+                {
+                    sb.Append(@"\par \b\fs22\cf2 ").Append(RtfEscape(line.Substring(4))).Append(@"\b0\fs19\par ");
+                }
+                else if (line.StartsWith("> "))
+                {
+                    string body = line.Substring(2).TrimStart();
+                    string label = "";
+                    if (body.StartsWith("🔧")) { label = "TOOL  "; body = body.Substring(2).TrimStart(); }
+                    else if (body.StartsWith("📦")) { label = "RESULT  "; body = body.Substring(2).TrimStart(); }
+                    sb.Append(@"\par \f1\fs16\li720\cf3 ").Append(RtfEscape(label + body)).Append(@"\f0\fs19\li0\par ");
+                }
+                else
+                {
+                    sb.Append(RtfEscape(line)).Append(@"\par ");
+                }
+                first = false;
+            }
+            sb.Append("}");
+            return sb.ToString();
+        }
+
+        /// <summary>RTF 转义：\ { } 转义、\n 转 \par；CJK 用 \uN?；代理对（emoji）降级为 ?。</summary>
+        private static string RtfEscape(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder sb = new StringBuilder(s.Length * 2);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '\\') sb.Append(@"\\");
+                else if (c == '{') sb.Append(@"\{");
+                else if (c == '}') sb.Append(@"\}");
+                else if (c == '\n') sb.Append(@"\par ");
+                else if (c < 128) sb.Append(c);
+                else if (char.IsHighSurrogate(c) || char.IsLowSurrogate(c)) sb.Append('?'); // emoji 等无法用 \uN 表示
+                else sb.Append(@"\u").Append((short)c).Append('?');
+            }
+            return sb.ToString();
+        }
     }
 
     // ---------- 界面语言（中文 / English） ----------
@@ -1056,7 +1122,14 @@ namespace DshChatHistoryExport
         {
             if (md.Length > 600000)
                 md = md.Substring(0, 600000) + "\n\n" + Lang.T("previewTruncated");
-            preview.Text = md;
+            try
+            {
+                preview.Rtf = SessionReader.BuildPreviewRtf(md); // 渲染为带格式的 RTF
+            }
+            catch
+            {
+                preview.Text = md; // RTF 失败回退纯文本
+            }
             preview.SelectionStart = 0;
             preview.ScrollToCaret();
         }
