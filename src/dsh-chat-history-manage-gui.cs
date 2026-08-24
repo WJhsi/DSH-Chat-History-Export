@@ -463,7 +463,7 @@ namespace DshChatHistoryManage
             { "langZh", "中文" },
             { "langEn", "English" },
             { "statusReady", "就绪" },
-            { "linkGithub", "GitHub 项目" },
+            { "linkGithub", "项目仓库" },
             { "statusLoaded", "已加载 {0} 个会话" },
             { "statusReading", "，正在读取主题…" },
             { "statusNoSessions", "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" },
@@ -511,7 +511,7 @@ namespace DshChatHistoryManage
             { "langZh", "中文" },
             { "langEn", "English" },
             { "statusReady", "Ready" },
-            { "linkGithub", "GitHub Project" },
+            { "linkGithub", "Project Repository" },
             { "statusLoaded", "Loaded {0} sessions" },
             { "statusReading", ", reading topics…" },
             { "statusNoSessions", " (no ~/.dsh/sessions found — use “Choose session file…”)" },
@@ -1050,6 +1050,8 @@ namespace DshChatHistoryManage
             lnkGithub.Margin = new Padding(8, 0, 4, 0);
             lnkGithub.ToolTipText = "https://github.com/WJhsi/DSH-Chat-History-Export";
             lnkGithub.Click += delegate { OpenUrl("https://github.com/WJhsi/DSH-Chat-History-Export"); };
+            lnkGithub.MouseEnter += delegate { status.Cursor = Cursors.Hand; };  // 悬停变手型（选择光标）
+            lnkGithub.MouseLeave += delegate { status.Cursor = Cursors.Default; };
             lnkSite = new ToolStripStatusLabel();
             lnkSite.Text = "www.hsij.cn";
             lnkSite.ForeColor = Color.FromArgb(0, 102, 204);
@@ -1057,6 +1059,8 @@ namespace DshChatHistoryManage
             lnkSite.Margin = new Padding(4, 0, 10, 0);
             lnkSite.ToolTipText = "https://www.hsij.cn";
             lnkSite.Click += delegate { OpenUrl("https://www.hsij.cn"); };
+            lnkSite.MouseEnter += delegate { status.Cursor = Cursors.Hand; };
+            lnkSite.MouseLeave += delegate { status.Cursor = Cursors.Default; };
             status.Items.Add(lnkGithub);
             status.Items.Add(lnkSite);
             Controls.Add(status);
