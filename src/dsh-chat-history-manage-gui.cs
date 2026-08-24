@@ -931,14 +931,14 @@ namespace DshChatHistoryManage
                         {
                             b.HeaderHeight = MeasureH(g, (b.Collapsed ? "▶ " : "▼ ") + b.Header, fToolHead, w);
                             if (b.HasBold)
-                                b.DetailHeight = BuildBoldLines(g, b, b.Text, fToolDetail, w - 12);
+                                b.DetailHeight = BuildBoldLines(b, b.Text, fToolDetail, w - 12);
                             else
                                 b.DetailHeight = MeasureH(g, b.Text, fToolDetail, w - 12);
                         }
                         else
                         {
                             if (b.HasBold)
-                                b.Height = BuildBoldLines(g, b, b.Text, b.Font, w);
+                                b.Height = BuildBoldLines(b, b.Text, b.Font, w);
                             else
                                 b.Height = MeasureH(g, b.Text, b.Font, w);
                         }
@@ -972,8 +972,9 @@ namespace DshChatHistoryManage
             return new Font(f, FontStyle.Bold);
         }
 
-        /// <summary>把含 **粗体** 的文本按词换行成行并测量总高度，结果缓存在块上。</summary>
-        private int BuildBoldLines(Graphics g, Block b, string text, Font baseFont, int width)
+        /// <summary>把含 **粗体** 的文本按词换行成行并测量总高度，结果缓存在块上。
+        /// 测量与绘制都用 GDI（TextRenderer），自洽不会错位；空格保留在词内，避免手工补间距出现「两端对齐」假象。</summary>
+        private int BuildBoldLines(Block b, string text, Font baseFont, int width)
         {
             b.BoldLines = new List<List<Word>>();
             if (string.IsNullOrEmpty(text)) { b.BoldLines.Add(new List<Word>()); return baseFont.Height + 10; }
@@ -992,7 +993,7 @@ namespace DshChatHistoryManage
                 else cur.Append(text[i]);
             }
             if (cur.Length > 0) segs.Add(new KeyValuePair<string, bool>(cur.ToString(), bold));
-            // 2) 拆词并测量宽度
+            // 2) 拆词（尾随空格保留在词内），用 GDI 单行测量
             List<Word> words = new List<Word>();
             foreach (KeyValuePair<string, bool> seg in segs)
             {
@@ -1001,15 +1002,15 @@ namespace DshChatHistoryManage
                 for (int j = 0; j < parts.Length; j++)
                 {
                     if (parts[j].Length == 0) continue;
+                    string wt = parts[j] + (j < parts.Length - 1 ? " " : "");
                     Word wd = new Word();
-                    wd.Text = parts[j];
+                    wd.Text = wt;
                     wd.Font = f;
-                    wd.Width = g.MeasureString(wd.Text, f).Width;
+                    wd.Width = TextRenderer.MeasureText(wt, f, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
                     words.Add(wd);
                 }
             }
             // 3) 贪心换行；超宽词按字符拆
-            float spaceW = g.MeasureString(" ", baseFont).Width;
             List<Word> line = new List<Word>();
             float lineW = 0f;
             for (int i = 0; i < words.Count; i++)
@@ -1017,57 +1018,52 @@ namespace DshChatHistoryManage
                 Word wd = words[i];
                 if (wd.Width > width)
                 {
-                    // 超宽词（长英文/长中文无空格）拆成字符逐字排
                     foreach (char ch in wd.Text)
                     {
                         Word cw = new Word();
                         cw.Text = ch.ToString();
                         cw.Font = wd.Font;
-                        cw.Width = g.MeasureString(cw.Text, wd.Font).Width;
-                        float need = (line.Count == 0 ? 0 : spaceW) + cw.Width;
-                        if (line.Count > 0 && lineW + need > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
+                        cw.Width = TextRenderer.MeasureText(cw.Text, wd.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
+                        if (line.Count > 0 && lineW + cw.Width > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
                         line.Add(cw);
-                        lineW += need;
+                        lineW += cw.Width;
                     }
                     continue;
                 }
-                float need2 = (line.Count == 0 ? 0 : spaceW) + wd.Width;
-                if (line.Count > 0 && lineW + need2 > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
+                if (line.Count > 0 && lineW + wd.Width > width) { b.BoldLines.Add(line); line = new List<Word>(); lineW = 0f; }
                 line.Add(wd);
-                lineW += need2;
+                lineW += wd.Width;
             }
             if (line.Count > 0) b.BoldLines.Add(line);
             if (b.BoldLines.Count == 0) b.BoldLines.Add(new List<Word>());
             return b.BoldLines.Count * (baseFont.Height + 2) + 10;
         }
 
-        private void DrawBoldLines(Graphics g, Block b, int x0, int y0, Color color, bool useGdi)
+        /// <summary>按行绘制粗体布局：同字体连续词合并为一次绘制（保留原顺序与原始间距）。</summary>
+        private void DrawBoldLines(Graphics g, Block b, int x0, int y0, Color color)
         {
-            float spaceW = g.MeasureString(" ", b.Font).Width;
             int lineH = b.Font.Height + 2;
             int y = y0;
             foreach (List<Word> line in b.BoldLines)
             {
                 float x = x0;
-                foreach (Word wd in line)
+                int i = 0;
+                while (i < line.Count)
                 {
-                    DrawWord(g, wd.Text, wd.Font, x, y, color, useGdi);
-                    x += wd.Width + spaceW;
+                    Font f = line[i].Font;
+                    StringBuilder sb = new StringBuilder();
+                    float w = 0f;
+                    while (i < line.Count && line[i].Font == f)
+                    {
+                        sb.Append(line[i].Text);
+                        w += line[i].Width;
+                        i++;
+                    }
+                    TextRenderer.DrawText(g, sb.ToString(), f, new Point((int)x, (int)y), color,
+                        TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    x += w;
                 }
                 y += lineH;
-            }
-        }
-
-        private static void DrawWord(Graphics g, string text, Font font, float x, float y, Color color, bool useGdi)
-        {
-            if (string.IsNullOrEmpty(text)) return;
-            if (useGdi)
-                TextRenderer.DrawText(g, text, font, new Point((int)x, (int)y), color,
-                    TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            else
-            {
-                using (SolidBrush brush = new SolidBrush(color))
-                    g.DrawString(text, font, brush, x, y);
             }
         }
 
@@ -1090,7 +1086,7 @@ namespace DshChatHistoryManage
                     if (!b.Collapsed)
                     {
                         if (b.HasBold && b.BoldLines != null)
-                            DrawBoldLines(g, b, PadX + 12, by + b.HeaderHeight, b.Color, b.UseGdi);
+                            DrawBoldLines(g, b, PadX + 12, by + b.HeaderHeight, b.Color);
                         else
                             DrawBlock(g, b.Text, fToolDetail, new RectangleF(PadX + 12, by + b.HeaderHeight, layoutWidth - 12, b.DetailHeight), b.Color, b.UseGdi);
                     }
@@ -1098,7 +1094,7 @@ namespace DshChatHistoryManage
                 else
                 {
                     if (b.HasBold && b.BoldLines != null)
-                        DrawBoldLines(g, b, PadX, by, b.Color, b.UseGdi);
+                        DrawBoldLines(g, b, PadX, by, b.Color);
                     else
                         DrawBlock(g, b.Text, b.Font, new RectangleF(PadX, by, layoutWidth, b.Height), b.Color, b.UseGdi);
                 }
