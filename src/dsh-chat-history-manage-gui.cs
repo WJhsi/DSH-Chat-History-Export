@@ -464,6 +464,28 @@ namespace DshChatHistoryManage
 
         public static readonly List<Language> Languages = new List<Language>();
 
+        /// <summary>菜单显示用简体中文名（按拼音 A-Z 排序）。</summary>
+        public static readonly Dictionary<string, string> ChineseNames = new Dictionary<string, string>
+        {
+            { "af", "南非荷兰语" }, { "ar", "阿拉伯语" }, { "az", "阿塞拜疆语" }, { "id", "印度尼西亚语" },
+            { "ms", "马来语" }, { "bn", "孟加拉语" }, { "bg", "保加利亚语" }, { "ca", "加泰罗尼亚语" },
+            { "cs", "捷克语" }, { "da", "丹麦语" }, { "de", "德语" }, { "et", "爱沙尼亚语" },
+            { "el", "希腊语" }, { "en", "英语" }, { "es", "西班牙语" }, { "eo", "世界语" },
+            { "eu", "巴斯克语" }, { "zh-MO", "繁体中文（澳门）" }, { "zh-TW", "繁体中文（台湾）" }, { "zh-HK", "繁体中文（香港）" },
+            { "fa", "波斯语" }, { "fil", "菲律宾语" }, { "fr", "法语" }, { "gl", "加利西亚语" },
+            { "ko", "韩语" }, { "hy", "亚美尼亚语" }, { "hi", "印地语" }, { "hr", "克罗地亚语" },
+            { "is", "冰岛语" }, { "it", "意大利语" }, { "he", "希伯来语" }, { "ja", "日语" },
+            { "kn", "卡纳达语" }, { "ka", "格鲁吉亚语" }, { "kk", "哈萨克语" }, { "km", "高棉语" },
+            { "sw", "斯瓦希里语" }, { "lv", "拉脱维亚语" }, { "lt", "立陶宛语" }, { "hu", "匈牙利语" },
+            { "ml", "马拉雅拉姆语" }, { "mr", "马拉地语" }, { "mn", "蒙古语" }, { "my", "缅甸语" },
+            { "nl", "荷兰语" }, { "ne", "尼泊尔语" }, { "no", "挪威语" }, { "uz", "乌兹别克语" },
+            { "pl", "波兰语" }, { "pt", "葡萄牙语" }, { "ro", "罗马尼亚语" }, { "ru", "俄语" },
+            { "si", "僧伽罗语" }, { "sk", "斯洛伐克语" }, { "sl", "斯洛文尼亚语" }, { "sr", "塞尔维亚语" },
+            { "fi", "芬兰语" }, { "sv", "瑞典语" }, { "ta", "泰米尔语" }, { "te", "泰卢固语" },
+            { "th", "泰语" }, { "vi", "越南语" }, { "tr", "土耳其语" }, { "uk", "乌克兰语" },
+            { "zh", "中文（简体）" },
+        };
+
         // 所有语言都翻译的核心键（其余键缺失时回退英文）
         private static readonly string[] CoreKeys =
         {
@@ -1376,13 +1398,13 @@ namespace DshChatHistoryManage
             langItems.Add(sysItem);
             mLang.DropDownItems.Add(sysItem);
             mLang.DropDownItems.Add(new ToolStripSeparator());
-            // 按原生名的拼音 A-Z 排序（中文（简体）→ Zhong 在 Z 区；繁體中文 → Fan 在 F 区等）
+            // 简体中文名，按拼音 A-Z 排序（中文（简体）→ Zhong 在 Z 区）
             foreach (string code in new[]
             {
-                "af", "ar", "az", "id", "ms", "bn", "bg", "ca", "cs", "da", "de", "et", "el", "en", "es", "eo", "eu",
-                "zh-MO", "zh-TW", "zh-HK", "fa", "fil", "fr", "gl", "ko", "hy", "hi", "hr", "is", "it", "he", "ja",
-                "kn", "ka", "kk", "km", "sw", "lv", "lt", "hu", "ml", "mr", "mn", "my", "nl", "ne", "no", "uz", "pl",
-                "pt", "ro", "ru", "si", "sk", "sl", "sr", "fi", "sv", "ta", "te", "th", "vi", "tr", "uk", "zh"
+                "et", "ar", "az", "bg", "eu", "is", "pl", "fa", "da", "de", "ru", "fr", "zh-MO", "zh-TW", "zh-HK", "fil", "fi",
+                "km", "ka", "ko", "kk", "nl", "gl", "ca", "cs", "kn", "hr", "lv", "lt", "ro", "mr", "ms", "ml", "mn", "bn", "my",
+                "af", "ne", "no", "pt", "ja", "sv", "sr", "si", "eo", "sk", "sl", "sw", "te", "ta", "th", "tr", "uk", "uz",
+                "es", "he", "el", "hu", "hy", "it", "hi", "id", "en", "vi", "zh"
             })
                 mLang.DropDownItems.Add(MakeLangItem(code));
 
@@ -1407,11 +1429,16 @@ namespace DshChatHistoryManage
             }
         }
 
-        /// <summary>创建一个语言菜单项（原生名显示，按拼音 A-Z 排序；点击切换语言）。</summary>
+        /// <summary>创建一个语言菜单项（简体中文名显示，按拼音 A-Z 排序；点击切换语言）。</summary>
         private ToolStripMenuItem MakeLangItem(string code)
         {
-            Lang.Language l = Lang.ByCode(code);
-            ToolStripMenuItem it = new ToolStripMenuItem(l != null ? l.NativeName : code);
+            string name;
+            if (!Lang.ChineseNames.TryGetValue(code, out name))
+            {
+                Lang.Language l = Lang.ByCode(code);
+                name = l != null ? l.NativeName : code;
+            }
+            ToolStripMenuItem it = new ToolStripMenuItem(name);
             it.Tag = code;
             it.Click += delegate { ApplyLanguage(code); };
             langItems.Add(it);
