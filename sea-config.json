@@ -1,5 +1,5 @@
 {
-  "main": "dsh-chat-history-export.cjs",
+  "main": "dsh-chat-history-manage.cjs",
   "output": "sea-prep.blob",
   "disableExperimentalSEAWarning": true
 }

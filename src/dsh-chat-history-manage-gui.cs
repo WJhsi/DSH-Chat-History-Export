@@ -1,13 +1,13 @@
-// dsh-chat-history-export-gui.cs — DSH Chat-History Export：导出 DSH 聊天记录（Win32 GUI 程序，单文件）
+// dsh-chat-history-manage-gui.cs — DSH Chat-History Manage：管理 DSH 聊天记录（Win32 GUI 程序，单文件）
 //
 // 编译（Windows 自带 .NET Framework 4.x，无需安装运行时）:
 //   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /unsafe /codepage:65001
 //     /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll
-//     /resource:libzstd.dll,libzstd.dll /out:dsh-chat-history-export.exe dsh-chat-history-export-gui.cs
+//     /resource:libzstd.dll,libzstd.dll /out:dsh-chat-history-manage.exe dsh-chat-history-manage-gui.cs
 //
 // 功能：
 //   1. 左侧会话列表（自动扫描 ~/.dsh/sessions），右侧实时预览转录内容
-//   2. 导出目录可浏览选择/手动输入，记住到 exe 旁边的 dsh-chat-history-export.config.json
+//   2. 导出目录可浏览选择/手动输入，记住到 exe 旁边的 dsh-chat-history-manage.config.json
 //   3. 支持 session.jsonl 与 zstd 压缩的 session.jsonl.zstd（内嵌 libzstd.dll 解压）
 //   4. 无参数启动 GUI；--selftest <会话> <输出> 走同一逻辑（供自检/脚本调用）
 
@@ -25,7 +25,7 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-namespace DshChatHistoryExport
+namespace DshChatHistoryManage
 {
     static class Program
     {
@@ -74,7 +74,7 @@ namespace DshChatHistoryExport
             if (ex == null) return;
             try
             {
-                string log = Path.Combine(Path.GetTempPath(), "dsh-chat-history-export-crash.log");
+                string log = Path.Combine(Path.GetTempPath(), "dsh-chat-history-manage-crash.log");
                 File.WriteAllText(log, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n" + ex.ToString(), new UTF8Encoding(false));
             }
             catch { }
@@ -130,7 +130,7 @@ namespace DshChatHistoryExport
         {
             lock (dllLock)
             {
-                string dir = Path.Combine(Path.GetTempPath(), "dsh-chat-history-export-native");
+                string dir = Path.Combine(Path.GetTempPath(), "dsh-chat-history-manage-native");
                 try { Directory.CreateDirectory(dir); }
                 catch { dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location); }
                 string dll = Path.Combine(dir, "libzstd.dll");
@@ -414,8 +414,8 @@ namespace DshChatHistoryExport
 
         private static readonly Dictionary<string, string> Zh = new Dictionary<string, string>
         {
-            { "title", "DSH Chat-History Export — 聊天记录导出工具" },
-            { "titleLabel", "DSH Chat-History Export" },
+            { "title", "DSH Chat-History Manage — 聊天记录管理工具" },
+            { "titleLabel", "DSH Chat-History Manage" },
             { "dirLabel", "导出目录:" },
             { "browse", "浏览…" },
             { "openDir", "打开目录" },
@@ -461,8 +461,8 @@ namespace DshChatHistoryExport
 
         private static readonly Dictionary<string, string> En = new Dictionary<string, string>
         {
-            { "title", "DSH Chat-History Export — Chat History Export Tool" },
-            { "titleLabel", "DSH Chat-History Export" },
+            { "title", "DSH Chat-History Manage — Chat History Manage Tool" },
+            { "titleLabel", "DSH Chat-History Manage" },
             { "dirLabel", "Export directory:" },
             { "browse", "Browse…" },
             { "openDir", "Open folder" },
@@ -790,12 +790,12 @@ namespace DshChatHistoryExport
 
         private string ConfigPath
         {
-            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-export.config.json"); }
+            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-manage.config.json"); }
         }
 
         private string CachePath
         {
-            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-export.titles.json"); }
+            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-manage.titles.json"); }
         }
 
         private const int TitleCacheVersion = 2; // 缓存格式版本，结构变化时旧缓存整体作废
