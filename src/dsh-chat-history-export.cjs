@@ -100,6 +100,17 @@ function sessionTitleOf(file) {
   return getTitle(buf.toString('utf8'));
 }
 
+// ---------- 主题磁盘缓存（与 GUI 同格式：{ 文件路径: { m: 修改时间ms, s: 大小, t: 主题 } }） ----------
+function titleCachePath() {
+  return path.join(__dirname, 'dsh-chat-history-export.titles.json');
+}
+function loadTitleCache() {
+  try { return JSON.parse(fs.readFileSync(titleCachePath(), 'utf8')); } catch { return {}; }
+}
+function saveTitleCache(cache) {
+  try { fs.writeFileSync(titleCachePath(), JSON.stringify(cache), 'utf8'); } catch { }
+}
+
 // ---------- 列出所有已保存会话 ----------
 function listSessions() {
   const root = path.join(os.homedir(), '.dsh', 'sessions');
@@ -119,9 +130,29 @@ function listSessions() {
     }
   })(root);
   out.sort((a, b) => fs.statSync(b.file).mtimeMs - fs.statSync(a.file).mtimeMs);
-  console.log('正在读取会话主题…');
+  // 缓存命中（修改时间 + 大小一致）直接复用，只对新增/变化过的会话重新解压
+  const cache = loadTitleCache();
+  const missing = [];
   for (const s of out) {
-    try { s.title = sessionTitleOf(s.file); } catch { s.title = null; }
+    let st = null;
+    try { st = fs.statSync(s.file); } catch { }
+    const c = st ? cache[s.file] : null;
+    if (c && c.m === st.mtimeMs && c.s === st.size && typeof c.t === 'string') {
+      s.title = c.t || null;
+    } else {
+      missing.push(s);
+    }
+  }
+  if (missing.length) {
+    console.log('正在读取会话主题…');
+    for (const s of missing) {
+      try { s.title = sessionTitleOf(s.file); } catch { s.title = null; }
+      try {
+        const st = fs.statSync(s.file);
+        cache[s.file] = { m: st.mtimeMs, s: st.size, t: s.title || '' };
+      } catch { }
+    }
+    saveTitleCache(cache);
   }
   return out;
 }

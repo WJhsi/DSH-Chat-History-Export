@@ -20,6 +20,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
@@ -122,19 +123,24 @@ namespace DshChatHistoryExport
             public ulong pos;
         }
 
+        private static readonly object dllLock = new object();
+
         internal static void EnsureDll()
         {
-            string dir = Path.Combine(Path.GetTempPath(), "dsh-chat-history-export-native");
-            try { Directory.CreateDirectory(dir); }
-            catch { dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location); }
-            string dll = Path.Combine(dir, "libzstd.dll");
-            if (!File.Exists(dll))
+            lock (dllLock)
             {
-                using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("libzstd.dll"))
-                using (FileStream fs = File.Create(dll))
-                    s.CopyTo(fs);
+                string dir = Path.Combine(Path.GetTempPath(), "dsh-chat-history-export-native");
+                try { Directory.CreateDirectory(dir); }
+                catch { dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location); }
+                string dll = Path.Combine(dir, "libzstd.dll");
+                if (!File.Exists(dll))
+                {
+                    using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("libzstd.dll"))
+                    using (FileStream fs = File.Create(dll))
+                        s.CopyTo(fs);
+                }
+                SetDllDirectory(dir);
             }
-            SetDllDirectory(dir);
         }
 
         /// <summary>
@@ -402,12 +408,71 @@ namespace DshChatHistoryExport
         private ToolStripStatusLabel statusLabel;
         private List<SessionInfo> sessions = new List<SessionInfo>();
         private string pickedFile;
-        // 主题缓存：文件路径 -> (修改时间, 主题)。mtime 未变则直接复用，刷新列表不重复解压
-        private Dictionary<string, KeyValuePair<DateTime, string>> titleCache = new Dictionary<string, KeyValuePair<DateTime, string>>();
+        // 主题缓存条目：修改时间（Unix 毫秒）+ 文件大小，两者都匹配才复用，避免文件被改写后误用旧主题
+        private class TitleCacheEntry
+        {
+            public long MtimeMs;
+            public long Size;
+            public string Title;
+        }
+        // 内存缓存（启动时从磁盘读入，扫描后写回磁盘，保证重进不重复解压）
+        private Dictionary<string, TitleCacheEntry> titleCache = new Dictionary<string, TitleCacheEntry>();
+        private int scanGen; // 刷新列表的代数，防止旧扫描的收尾覆盖新状态
 
         private string ConfigPath
         {
             get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-export.config.json"); }
+        }
+
+        private string CachePath
+        {
+            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-export.titles.json"); }
+        }
+
+        private void LoadTitleCache()
+        {
+            try
+            {
+                if (!File.Exists(CachePath)) return;
+                Dictionary<string, object> raw =
+                    new JavaScriptSerializer().DeserializeObject(File.ReadAllText(CachePath)) as Dictionary<string, object>;
+                if (raw == null) return;
+                lock (titleCache)
+                {
+                    foreach (KeyValuePair<string, object> kv in raw)
+                    {
+                        Dictionary<string, object> e = kv.Value as Dictionary<string, object>;
+                        if (e == null) continue;
+                        TitleCacheEntry ce = new TitleCacheEntry();
+                        ce.MtimeMs = e.ContainsKey("m") ? Convert.ToInt64(e["m"]) : 0;
+                        ce.Size = e.ContainsKey("s") ? Convert.ToInt64(e["s"]) : 0;
+                        ce.Title = e.ContainsKey("t") ? Convert.ToString(e["t"]) : "";
+                        titleCache[kv.Key] = ce;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void SaveTitleCache()
+        {
+            try
+            {
+                Dictionary<string, object> raw = new Dictionary<string, object>();
+                lock (titleCache)
+                {
+                    foreach (KeyValuePair<string, TitleCacheEntry> kv in titleCache)
+                    {
+                        Dictionary<string, object> e = new Dictionary<string, object>();
+                        e["m"] = kv.Value.MtimeMs;
+                        e["s"] = kv.Value.Size;
+                        e["t"] = kv.Value.Title ?? "";
+                        raw[kv.Key] = e;
+                    }
+                }
+                File.WriteAllText(CachePath, new JavaScriptSerializer().Serialize(raw), new UTF8Encoding(false));
+            }
+            catch { }
         }
 
         public MainForm()
@@ -511,7 +576,14 @@ namespace DshChatHistoryExport
             list.DoubleClick += delegate { Export(); };
 
             LoadConfig();
+            LoadTitleCache();
             LoadSessions();
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            SaveTitleCache(); // 收尾写回主题缓存，下次启动直接复用
+            base.OnFormClosing(e);
         }
 
         private static Button MkButton(string text, int width)
@@ -568,14 +640,20 @@ namespace DshChatHistoryExport
                 }
             }
             sessions.Sort(delegate (SessionInfo a, SessionInfo b) { return b.Time.CompareTo(a.Time); });
+            int gen = ++scanGen;
             List<KeyValuePair<SessionInfo, ListViewItem>> pending = new List<KeyValuePair<SessionInfo, ListViewItem>>();
             foreach (SessionInfo si in sessions)
             {
                 string topic = null;
+                long len = -1;
+                try { len = new FileInfo(si.File).Length; } catch { }
                 lock (titleCache)
                 {
-                    KeyValuePair<DateTime, string> c;
-                    if (titleCache.TryGetValue(si.File, out c) && c.Key == si.Time) topic = c.Value;
+                    TitleCacheEntry c;
+                    if (titleCache.TryGetValue(si.File, out c)
+                        && c.MtimeMs == new DateTimeOffset(si.Time).ToUnixTimeMilliseconds()
+                        && (len < 0 || c.Size == len))
+                        topic = c.Title;
                 }
                 ListViewItem it = new ListViewItem(topic ?? "");
                 it.SubItems.Add(si.Id);
@@ -589,7 +667,7 @@ namespace DshChatHistoryExport
             statusLabel.Text = "已加载 " + sessions.Count + " 个会话"
                 + (sessions.Count == 0 ? "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" : "")
                 + (pending.Count > 0 ? "，正在读取主题…" : "");
-            if (pending.Count > 0) ScanTitles(pending);
+            if (pending.Count > 0) ScanTitles(pending, gen);
         }
 
         /// <summary>
@@ -620,11 +698,12 @@ namespace DshChatHistoryExport
         }
 
         /// <summary>后台逐个读取会话主题（解压 + 取最后一条 session/title），进度实时填回列表。</summary>
-        private void ScanTitles(List<KeyValuePair<SessionInfo, ListViewItem>> pending)
+        /// <summary>并行读取未缓存会话的主题（解压 + 取最后一条 session/title），进度实时填回列表，结束后写回磁盘缓存。</summary>
+        private void ScanTitles(List<KeyValuePair<SessionInfo, ListViewItem>> pending, int gen)
         {
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                foreach (KeyValuePair<SessionInfo, ListViewItem> pair in pending)
+                Parallel.ForEach(pending, new ParallelOptions { MaxDegreeOfParallelism = 4 }, delegate (KeyValuePair<SessionInfo, ListViewItem> pair)
                 {
                     SessionInfo si = pair.Key;
                     ListViewItem it = pair.Value;
@@ -632,16 +711,25 @@ namespace DshChatHistoryExport
                     try
                     {
                         DateTime mt = File.GetLastWriteTime(si.File);
+                        long len = -1;
+                        try { len = new FileInfo(si.File).Length; } catch { }
                         lock (titleCache)
                         {
-                            KeyValuePair<DateTime, string> c;
-                            if (titleCache.TryGetValue(si.File, out c) && c.Key == mt) topic = c.Value;
+                            TitleCacheEntry c;
+                            if (titleCache.TryGetValue(si.File, out c)
+                                && c.MtimeMs == new DateTimeOffset(mt).ToUnixTimeMilliseconds()
+                                && (len < 0 || c.Size == len))
+                                topic = c.Title;
                         }
                         if (topic == null)
                         {
                             string raw = SessionReader.ReadSession(si.File);
                             topic = SessionReader.GetTitle(raw) ?? "";
-                            lock (titleCache) titleCache[si.File] = new KeyValuePair<DateTime, string>(mt, topic);
+                            TitleCacheEntry ce = new TitleCacheEntry();
+                            ce.MtimeMs = new DateTimeOffset(mt).ToUnixTimeMilliseconds();
+                            ce.Size = len;
+                            ce.Title = topic;
+                            lock (titleCache) titleCache[si.File] = ce;
                         }
                         si.Title = topic;
                         if (IsDisposed) return;
@@ -655,7 +743,13 @@ namespace DshChatHistoryExport
                         });
                     }
                     catch { }
-                }
+                });
+                SaveTitleCache();
+                if (IsDisposed || gen != scanGen) return;
+                BeginInvoke((Action)delegate
+                {
+                    statusLabel.Text = "已加载 " + sessions.Count + " 个会话";
+                });
             });
         }
 

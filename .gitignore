@@ -1,6 +1,9 @@
 # 运行时生成的本机配置（导出目录），不随项目分发
 dsh-chat-history-export.config.json
 
+# 会话主题磁盘缓存（重建成本低，无需入库）
+dsh-chat-history-export.titles.json
+
 # 日志 / 临时文件
 *.log
 *.err.txt
