@@ -1172,7 +1172,14 @@ namespace DshChatHistoryManage
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
-                | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+                | ControlStyles.UserPaint | ControlStyles.ResizeRedraw
+                | ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent; // 圆角外区域透出父背景（否则露出灰色底）
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs pevent)
+        {
+            // 不填充背景，让圆角外透出容器颜色
         }
 
         protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hovered = true; Invalidate(); }
@@ -1447,6 +1454,7 @@ namespace DshChatHistoryManage
             root.Controls.Add(title, 0, 0);
 
             TableLayoutPanel dirRow = new TableLayoutPanel();
+            dirRow.BackColor = UiTheme.Window; // 透明按钮的透出底色
             dirRow.ColumnCount = 4;
             dirRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             dirRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -1475,6 +1483,7 @@ namespace DshChatHistoryManage
 
             FlowLayoutPanel actions = new FlowLayoutPanel();
             actions.Dock = DockStyle.Fill;
+            actions.BackColor = UiTheme.Window; // 透明按钮的透出底色
             actions.AutoSize = true;
             actions.Margin = new Padding(0, 8, 0, 8);
             btnRefresh = MkButton(Lang.T("refresh"), 120);
