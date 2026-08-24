@@ -1,8 +1,5 @@
-# 运行时生成的本机配置（导出目录），不随项目分发
-dsh-chat-history-manage.config.json
-
-# 会话主题磁盘缓存（重建成本低，无需入库）
-dsh-chat-history-manage.titles.json
+# 运行时生成的本机配置/缓存（json 子目录），不随项目分发
+json/
 
 # 日志 / 临时文件
 *.log

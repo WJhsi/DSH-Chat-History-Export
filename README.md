@@ -29,6 +29,6 @@ Double-click `build.cmd` to recompile `src\dsh-chat-history-manage-gui.cs` into 
 
 ## Notes
 
-- `dsh-chat-history-manage.config.json` and `dsh-chat-history-manage.titles.json` are machine-local runtime files (export/session folders, language, topic cache); they are not distributed with the program.
+- Runtime files (config, topic cache) are written to a `json` subfolder next to the exe; they are machine-local and not distributed with the program.
 - Session files use DSH's private format (zstd-compressed JSONL event stream). This tool only **reads** them and never modifies any session file.
 - On a crash, error details are written to `%TEMP%\dsh-chat-history-manage-crash.log`.

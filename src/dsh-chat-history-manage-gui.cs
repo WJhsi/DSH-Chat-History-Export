@@ -1237,14 +1237,25 @@ namespace DshChatHistoryManage
         private int scanGen; // 刷新列表的代数，防止旧扫描的收尾覆盖新状态
         private int filteredCount; // 被剔除的空白会话数（无主题且无聊天内容）
 
+        // 运行时生成的 JSON 统一放进 exe 旁的 json 子目录
+        private string JsonDir
+        {
+            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "json"); }
+        }
+
+        private void EnsureJsonDir()
+        {
+            try { Directory.CreateDirectory(JsonDir); } catch { }
+        }
+
         private string ConfigPath
         {
-            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-manage.config.json"); }
+            get { return Path.Combine(JsonDir, "dsh-chat-history-manage.config.json"); }
         }
 
         private string CachePath
         {
-            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dsh-chat-history-manage.titles.json"); }
+            get { return Path.Combine(JsonDir, "dsh-chat-history-manage.titles.json"); }
         }
 
         private const int TitleCacheVersion = 2; // 缓存格式版本，结构变化时旧缓存整体作废
@@ -1284,6 +1295,7 @@ namespace DshChatHistoryManage
         {
             try
             {
+                EnsureJsonDir();
                 Dictionary<string, object> entries = new Dictionary<string, object>();
                 lock (titleCache)
                 {
@@ -2038,6 +2050,15 @@ namespace DshChatHistoryManage
             dirBox.Text = def;
             try
             {
+                // 迁移：旧位置（exe 旁）的配置移入 json 子目录
+                if (!File.Exists(ConfigPath))
+                {
+                    string old = Path.Combine(def, "dsh-chat-history-manage.config.json");
+                    if (File.Exists(old))
+                    {
+                        try { EnsureJsonDir(); File.Move(old, ConfigPath); } catch { }
+                    }
+                }
                 if (File.Exists(ConfigPath))
                 {
                     Dictionary<string, object> cfg =
@@ -2069,6 +2090,7 @@ namespace DshChatHistoryManage
         {
             try
             {
+                EnsureJsonDir();
                 Dictionary<string, object> cfg = new Dictionary<string, object>();
                 cfg["exportDir"] = exportDir;
                 cfg["lang"] = Lang.Current;

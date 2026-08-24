@@ -18,13 +18,17 @@ const { zstdDecompressSync } = require('node:zlib');
 
 // ---------- 配置（自定义导出目录，存 exe 旁边） ----------
 function configPath() {
-  return path.join(path.dirname(process.execPath), 'dsh-chat-history-manage.config.json');
+  return path.join(path.dirname(process.execPath), 'json', 'dsh-chat-history-manage.config.json');
 }
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(configPath(), 'utf8')); } catch { return {}; }
 }
 function saveConfig(cfg) {
-  try { fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2), 'utf8'); return true; } catch { return false; }
+  try {
+    fs.mkdirSync(path.dirname(configPath()), { recursive: true });
+    fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2), 'utf8');
+    return true;
+  } catch { return false; }
 }
 
 // ---------- Windows 目录选择器 ----------
@@ -137,7 +141,7 @@ function sessionMetaOf(file) {
 // ---------- 主题磁盘缓存（与 GUI 同格式，带版本号；条目含 c: 是否有内容） ----------
 const TITLE_CACHE_VERSION = 2;
 function titleCachePath() {
-  return path.join(__dirname, 'dsh-chat-history-manage.titles.json');
+  return path.join(__dirname, 'json', 'dsh-chat-history-manage.titles.json');
 }
 function loadTitleCache() {
   try {
@@ -147,7 +151,10 @@ function loadTitleCache() {
   return {};
 }
 function saveTitleCache(entries) {
-  try { fs.writeFileSync(titleCachePath(), JSON.stringify({ v: TITLE_CACHE_VERSION, e: entries }), 'utf8'); } catch { }
+  try {
+    fs.mkdirSync(path.dirname(titleCachePath()), { recursive: true });
+    fs.writeFileSync(titleCachePath(), JSON.stringify({ v: TITLE_CACHE_VERSION, e: entries }), 'utf8');
+  } catch { }
 }
 
 // ---------- 列出所有已保存会话（剔除无主题且无聊天内容的空白会话，附加 filtered 计数） ----------
