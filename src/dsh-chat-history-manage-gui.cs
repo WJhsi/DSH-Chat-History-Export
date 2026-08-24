@@ -1259,7 +1259,7 @@ namespace DshChatHistoryManage
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle rc = ClientRectangle;
             rc.Inflate(-1, -1);
-            int r = Math.Min(12, rc.Height / 2); // 圆角
+            int r = rc.Height / 2; // 胶囊形：两端全圆
             using (GraphicsPath path = RoundedRectPath(rc, r))
             {
                 using (SolidBrush br = new SolidBrush(Color.White))
@@ -1530,8 +1530,10 @@ namespace DshChatHistoryManage
             lb.AutoSize = true;
             lb.Anchor = AnchorStyles.Left;
             lbDir = lb;
-            dirBox = new RoundedTextBox(); // 圆角输入栏
+            dirBox = new RoundedTextBox(); // 胶囊输入栏
             dirBox.Dock = DockStyle.Fill;
+            dirBox.MinimumSize = new Size(0, 30); // 锁定高度，避免撑高布局行
+            dirBox.MaximumSize = new Size(0, 30);
             btnBrowse = MkButton(Lang.T("browse"), 84, false, true);      // 目录按钮：胶囊形
             btnOpenDir = MkButton(Lang.T("openDir"), 92, false, true);    // 目录按钮：胶囊形
             dirRow.Controls.Add(lb, 0, 0);
