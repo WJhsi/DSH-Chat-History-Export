@@ -894,10 +894,12 @@ namespace DshChatHistoryManage
             desc.TextAlign = ContentAlignment.TopLeft;
 
             LinkLabel gh = new LinkLabel();
-            gh.Text = "GitHub: https://github.com/WJhsi/DSH-Chat-History-Export";
+            gh.Text = "GitHub: WJhsi/DSH-Chat-History-Export"; // 短格式，避免溢出
             gh.AutoSize = true;
             gh.LinkBehavior = LinkBehavior.HoverUnderline;
             gh.Location = new Point(24, 160);
+            ToolTip ghTip = new ToolTip();
+            ghTip.SetToolTip(gh, "https://github.com/WJhsi/DSH-Chat-History-Export");
             gh.LinkClicked += delegate { Open("https://github.com/WJhsi/DSH-Chat-History-Export"); };
 
             LinkLabel site = new LinkLabel();
