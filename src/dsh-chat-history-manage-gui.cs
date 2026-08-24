@@ -1,4 +1,4 @@
-﻿// dsh-chat-history-manage-gui.cs — DSH Chat-History Manage：管理 DSH 聊天记录（Win32 GUI 程序，单文件）
+// dsh-chat-history-manage-gui.cs — DSH Chat-History Manage：管理 DSH 聊天记录（Win32 GUI 程序，单文件）
 //
 // 编译（Windows 自带 .NET Framework 4.x，无需安装运行时）:
 //   C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /unsafe /codepage:65001
@@ -1119,6 +1119,44 @@ namespace DshChatHistoryManage
         }
     }
 
+    // ---------- 浅色现代主题（集中配色 + 自绘菜单/按钮） ----------
+    static class UiTheme
+    {
+        public static readonly Color Window = Color.FromArgb(247, 249, 252);   // 窗体/面板背景
+        public static readonly Color Panel = Color.White;                       // 内容面板
+        public static readonly Color Border = Color.FromArgb(224, 229, 236);   // 边框/分隔线
+        public static readonly Color Text = Color.FromArgb(31, 35, 41);        // 主文字
+        public static readonly Color Muted = Color.FromArgb(110, 118, 129);    // 次要文字
+        public static readonly Color Accent = Color.FromArgb(37, 99, 235);     // 强调蓝
+        public static readonly Color AccentHover = Color.FromArgb(29, 78, 216);
+        public static readonly Color Hover = Color.FromArgb(240, 244, 250);    // 悬停浅蓝
+        public static readonly Color Selection = Color.FromArgb(219, 232, 255);// 选中
+    }
+
+    class UiColorTable : ProfessionalColorTable
+    {
+        public override Color MenuStripGradientBegin { get { return UiTheme.Window; } }
+        public override Color MenuStripGradientEnd { get { return UiTheme.Window; } }
+        public override Color MenuItemSelected { get { return UiTheme.Hover; } }
+        public override Color MenuItemBorder { get { return UiTheme.Hover; } }
+        public override Color MenuItemSelectedGradientBegin { get { return UiTheme.Hover; } }
+        public override Color MenuItemSelectedGradientEnd { get { return UiTheme.Hover; } }
+        public override Color MenuItemPressedGradientBegin { get { return UiTheme.Selection; } }
+        public override Color MenuItemPressedGradientEnd { get { return UiTheme.Selection; } }
+        public override Color ToolStripDropDownBackground { get { return Color.White; } }
+        public override Color MenuBorder { get { return UiTheme.Border; } }
+        public override Color ImageMarginGradientBegin { get { return Color.White; } }
+        public override Color ImageMarginGradientMiddle { get { return Color.White; } }
+        public override Color ImageMarginGradientEnd { get { return Color.White; } }
+        public override Color StatusStripGradientBegin { get { return Color.White; } }
+        public override Color StatusStripGradientEnd { get { return Color.White; } }
+    }
+
+    class UiMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public UiMenuRenderer() : base(new UiColorTable()) { }
+    }
+
     // ---------- 关于对话框 ----------
     class AboutForm : Form
     {
@@ -1126,6 +1164,7 @@ namespace DshChatHistoryManage
         {
             Text = Lang.T("aboutTitle");
             Font = new Font("Microsoft YaHei UI", 9.5f);
+            BackColor = UiTheme.Window;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -1171,6 +1210,12 @@ namespace DshChatHistoryManage
             ok.DialogResult = DialogResult.OK;
             ok.Width = 90;
             ok.Height = 30;
+            ok.BackColor = UiTheme.Accent;
+            ok.ForeColor = Color.White;
+            ok.FlatStyle = FlatStyle.Flat;
+            ok.FlatAppearance.BorderColor = UiTheme.Accent;
+            ok.FlatAppearance.MouseOverBackColor = UiTheme.AccentHover;
+            ok.Cursor = Cursors.Hand;
             ok.Location = new Point(ClientSize.Width - ok.Width - 24, ClientSize.Height - ok.Height - 20);
             AcceptButton = ok;
 
@@ -1328,9 +1373,11 @@ namespace DshChatHistoryManage
             ClientSize = new Size(defW, defH);
             MinimumSize = new Size(Math.Min(1100, defW), Math.Min(640, defH));
             StartPosition = FormStartPosition.CenterScreen;
+            BackColor = UiTheme.Window;
 
             TableLayoutPanel root = new TableLayoutPanel();
             root.Dock = DockStyle.Fill;
+            root.BackColor = UiTheme.Window;
             root.Padding = new Padding(12);
             root.ColumnCount = 1;
             root.RowCount = 4;
@@ -1342,6 +1389,7 @@ namespace DshChatHistoryManage
             Label title = new Label();
             title.Text = Lang.T("titleLabel");
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
+            title.ForeColor = UiTheme.Text;
             title.AutoSize = true;
             titleLabel = title;
             root.Controls.Add(title, 0, 0);
@@ -1363,6 +1411,8 @@ namespace DshChatHistoryManage
             lbDir = lb;
             dirBox = new TextBox();
             dirBox.Dock = DockStyle.Fill;
+            dirBox.BackColor = UiTheme.Panel;
+            dirBox.ForeColor = UiTheme.Text;
             btnBrowse = MkButton(Lang.T("browse"), 84);
             btnOpenDir = MkButton(Lang.T("openDir"), 92);
             dirRow.Controls.Add(lb, 0, 0);
@@ -1377,7 +1427,7 @@ namespace DshChatHistoryManage
             actions.Margin = new Padding(0, 8, 0, 8);
             btnRefresh = MkButton(Lang.T("refresh"), 120);
             btnPick = MkButton(Lang.T("pick"), 140);
-            btnExport = MkButton(Lang.T("exportBtn"), 120);
+            btnExport = MkButton(Lang.T("exportBtn"), 120, true); // 主按钮：强调色
             actions.Controls.Add(btnRefresh);
             actions.Controls.Add(btnPick);
             actions.Controls.Add(btnExport);
@@ -1385,9 +1435,12 @@ namespace DshChatHistoryManage
 
             SplitContainer split = new SplitContainer();
             split.Dock = DockStyle.Fill;
+            split.BackColor = UiTheme.Border; // 分隔线细边
             split.FixedPanel = FixedPanel.Panel1; // 左侧列表宽度由 FitLeftPanel 自适应，右侧预览拿剩余空间
             split.SplitterDistance = 640;
             split.Panel1MinSize = 480;
+            split.Panel1.BackColor = UiTheme.Window;
+            split.Panel2.BackColor = UiTheme.Window;
             this.split = split;
 
             list = new ListView();
@@ -1395,6 +1448,9 @@ namespace DshChatHistoryManage
             list.View = View.Details;
             list.FullRowSelect = true;
             list.HideSelection = false;
+            list.BackColor = UiTheme.Panel;
+            list.ForeColor = UiTheme.Text;
+            list.BorderStyle = BorderStyle.None;
             list.Columns.Add(Lang.T("colTopic"), 190);
             list.Columns.Add(Lang.T("colId"), 200);
             list.Columns.Add(Lang.T("colTime"), 110);
@@ -1408,6 +1464,7 @@ namespace DshChatHistoryManage
             Controls.Add(root);
 
             status = new StatusStrip();
+            status.Renderer = new UiMenuRenderer(); // 白色状态栏
             statusLabel = new ToolStripStatusLabel();
             statusLabel.Text = Lang.T("statusReady");
             statusLabel.TextAlign = ContentAlignment.MiddleLeft; // 文字靠左（ToolStripStatusLabel 默认居中，必须显式设置）
@@ -1423,7 +1480,7 @@ namespace DshChatHistoryManage
             // 比 ToolStripControlHost(LinkLabel) 渲染可靠得多
             lnkGithub = new ToolStripStatusLabel();
             lnkGithub.Text = Lang.T("linkGithub");
-            lnkGithub.ForeColor = Color.FromArgb(0, 102, 204);
+            lnkGithub.ForeColor = UiTheme.Accent;
             lnkGithub.Font = new Font(Font, FontStyle.Underline);
             lnkGithub.Margin = new Padding(8, 0, 4, 0);
             lnkGithub.ToolTipText = "https://github.com/WJhsi/DSH-Chat-History-Manage";
@@ -1432,7 +1489,7 @@ namespace DshChatHistoryManage
             lnkGithub.MouseLeave += delegate { status.Cursor = Cursors.Default; };
             lnkSite = new ToolStripStatusLabel();
             lnkSite.Text = "www.hsij.cn";
-            lnkSite.ForeColor = Color.FromArgb(0, 102, 204);
+            lnkSite.ForeColor = UiTheme.Accent;
             lnkSite.Font = new Font(Font, FontStyle.Underline);
             lnkSite.Margin = new Padding(4, 0, 10, 0);
             lnkSite.ToolTipText = "https://www.hsij.cn";
@@ -1469,6 +1526,8 @@ namespace DshChatHistoryManage
         {
             menu = new MenuStrip();
             menu.Font = Font;
+            menu.BackColor = UiTheme.Window;
+            menu.Renderer = new UiMenuRenderer(); // 浅色自绘菜单
 
             mFile = new ToolStripMenuItem(Lang.T("menuFile"));
             filePick = new ToolStripMenuItem(Lang.T("filePick"), null, delegate { PickFile(); });
@@ -1606,13 +1665,30 @@ namespace DshChatHistoryManage
             catch { }
         }
 
-        private static Button MkButton(string text, int width)
+        private static Button MkButton(string text, int width, bool primary = false)
         {
             Button b = new Button();
             b.Text = text;
             b.Width = width;
             b.Height = 30;
             b.Margin = new Padding(0, 0, 8, 0);
+            b.FlatStyle = FlatStyle.Flat;
+            b.FlatAppearance.BorderColor = UiTheme.Border;
+            b.FlatAppearance.MouseOverBackColor = UiTheme.Hover;
+            b.FlatAppearance.MouseDownBackColor = UiTheme.Selection;
+            b.Cursor = Cursors.Hand;
+            if (primary)
+            {
+                b.BackColor = UiTheme.Accent;
+                b.ForeColor = Color.White;
+                b.FlatAppearance.BorderColor = UiTheme.Accent;
+                b.FlatAppearance.MouseOverBackColor = UiTheme.AccentHover;
+            }
+            else
+            {
+                b.BackColor = UiTheme.Panel;
+                b.ForeColor = UiTheme.Text;
+            }
             return b;
         }
 
