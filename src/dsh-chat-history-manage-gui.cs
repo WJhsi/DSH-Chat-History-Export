@@ -474,6 +474,12 @@ namespace DshChatHistoryManage
             { "editClearCache", "清除主题缓存" },
             { "langZh", "中文" },
             { "langEn", "English" },
+            { "menuHelp", "帮助" },
+            { "about", "关于" },
+            { "aboutTitle", "关于 DSH Chat-History Manage" },
+            { "aboutVersion", "版本 1.0.0" },
+            { "aboutDesc", "把 DeepSeek Harness（DSH）保存在本地磁盘的会话文件导出成可读的 Markdown 聊天记录。\n单文件 Win32 程序，无需安装运行时；支持 zstd 压缩与明文 JSONL。" },
+            { "aboutOk", "确定" },
             { "statusReady", "就绪" },
             { "statusLoading", "正在加载会话…" },
             { "statusLoadingPct", "正在加载会话… {0}%" },
@@ -524,6 +530,12 @@ namespace DshChatHistoryManage
             { "editClearCache", "&Clear topic cache" },
             { "langZh", "中文" },
             { "langEn", "English" },
+            { "menuHelp", "&Help" },
+            { "about", "&About" },
+            { "aboutTitle", "About DSH Chat-History Manage" },
+            { "aboutVersion", "Version 1.0.0" },
+            { "aboutDesc", "Exports chat sessions saved by DeepSeek Harness (DSH) on local disk into readable Markdown transcripts.\nSingle-file Win32 app, no runtime required; supports zstd-compressed and plain JSONL." },
+            { "aboutOk", "OK" },
             { "statusReady", "Ready" },
             { "statusLoading", "Loading session…" },
             { "statusLoadingPct", "Loading session… {0}%" },
@@ -850,6 +862,73 @@ namespace DshChatHistoryManage
         }
     }
 
+    // ---------- 关于对话框 ----------
+    class AboutForm : Form
+    {
+        public AboutForm()
+        {
+            Text = Lang.T("aboutTitle");
+            Font = new Font("Microsoft YaHei UI", 9.5f);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(430, 260);
+
+            Label name = new Label();
+            name.Text = "DSH Chat-History Manage";
+            name.Font = new Font("Microsoft YaHei UI", 16f, FontStyle.Bold);
+            name.AutoSize = true;
+            name.Location = new Point(24, 20);
+
+            Label ver = new Label();
+            ver.Text = Lang.T("aboutVersion");
+            ver.AutoSize = true;
+            ver.Location = new Point(24, 56);
+
+            Label desc = new Label();
+            desc.Text = Lang.T("aboutDesc");
+            desc.Location = new Point(24, 84);
+            desc.Size = new Size(382, 70);
+            desc.TextAlign = ContentAlignment.TopLeft;
+
+            LinkLabel gh = new LinkLabel();
+            gh.Text = "GitHub: https://github.com/WJhsi/DSH-Chat-History-Export";
+            gh.AutoSize = true;
+            gh.LinkBehavior = LinkBehavior.HoverUnderline;
+            gh.Location = new Point(24, 160);
+            gh.LinkClicked += delegate { Open("https://github.com/WJhsi/DSH-Chat-History-Export"); };
+
+            LinkLabel site = new LinkLabel();
+            site.Text = "www.hsij.cn";
+            site.AutoSize = true;
+            site.LinkBehavior = LinkBehavior.HoverUnderline;
+            site.Location = new Point(24, 184);
+            site.LinkClicked += delegate { Open("https://www.hsij.cn"); };
+
+            Button ok = new Button();
+            ok.Text = Lang.T("aboutOk");
+            ok.DialogResult = DialogResult.OK;
+            ok.Width = 90;
+            ok.Height = 30;
+            ok.Location = new Point(ClientSize.Width - ok.Width - 24, ClientSize.Height - ok.Height - 20);
+            AcceptButton = ok;
+
+            Controls.Add(name);
+            Controls.Add(ver);
+            Controls.Add(desc);
+            Controls.Add(gh);
+            Controls.Add(site);
+            Controls.Add(ok);
+        }
+
+        private static void Open(string url)
+        {
+            try { Process.Start(url); } catch { }
+        }
+    }
+
     // ---------- 主窗口 ----------
     class SessionInfo
     {
@@ -877,10 +956,11 @@ namespace DshChatHistoryManage
         private Label titleLabel, lbDir;
         // 菜单栏（文件 / 编辑 / 语言）
         private MenuStrip menu;
-        private ToolStripMenuItem mFile, mEdit, mLang;
+        private ToolStripMenuItem mFile, mEdit, mLang, mHelp;
         private ToolStripMenuItem filePick, fileRefresh, fileExport, fileExit;
         private ToolStripMenuItem editCopy, editClearCache;
         private ToolStripMenuItem langZhItem, langEnItem;
+        private ToolStripMenuItem aboutItem;
         // 主题缓存条目：修改时间（Unix 毫秒）+ 文件大小，两者都匹配才复用，避免文件被改写后误用旧主题
         private class TitleCacheEntry
         {
@@ -1141,11 +1221,25 @@ namespace DshChatHistoryManage
             mLang.DropDownItems.Add(langZhItem);
             mLang.DropDownItems.Add(langEnItem);
 
+            mHelp = new ToolStripMenuItem(Lang.T("menuHelp"));
+            aboutItem = new ToolStripMenuItem(Lang.T("about"), null, delegate { ShowAbout(); });
+            mHelp.DropDownItems.Add(aboutItem);
+
             menu.Items.Add(mFile);
             menu.Items.Add(mEdit);
             menu.Items.Add(mLang);
+            menu.Items.Add(mHelp);
             MainMenuStrip = menu;
             Controls.Add(menu);
+        }
+
+        /// <summary>弹出「关于」对话框。</summary>
+        private void ShowAbout()
+        {
+            using (AboutForm f = new AboutForm())
+            {
+                f.ShowDialog(this);
+            }
         }
 
         /// <summary>应用界面语言：更新全部文案并持久化到配置。</summary>
@@ -1178,6 +1272,8 @@ namespace DshChatHistoryManage
             mLang.Text = Lang.T("menuLang");
             langZhItem.Text = Lang.T("langZh");
             langEnItem.Text = Lang.T("langEn");
+            mHelp.Text = Lang.T("menuHelp");
+            aboutItem.Text = Lang.T("about");
             langZhItem.Checked = lang == "zh";
             langEnItem.Checked = lang == "en";
             if (lnkGithub != null)
