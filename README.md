@@ -1,48 +1,34 @@
 # DSH Chat-History Manage
 
-Export chat sessions saved by DeepSeek Harness (DSH) on local disk into readable Markdown transcripts.
-A native **Win32 desktop app** delivered as a single-file exe — no runtime installation needed (Windows 10/11 ship with .NET Framework built in).
+Export and manage chat sessions saved by DeepSeek Harness (DSH) on local disk as readable Markdown transcripts.
+A single-file Win32 desktop app — no runtime installation needed (Windows 10/11 ship with .NET Framework built in).
+
+## Features
+
+- **Session list**: automatically finds the DSH sessions folder (remembered choice → `$DSH_HOME` → `~/.dsh/sessions`), or lets you pick it manually when not found. Shows each session's **topic**, ID and time; blank sessions (no topic, no chat content) are hidden and reported.
+- **Preview**: formatted transcript — per-turn model names, inline **bold**, emoji, collapsible tool calls, with a loading progress bar.
+- **Export**: writes `<session-ID>-transcript.md` to a folder of your choice (remembered).
+- **Menu bar**: File / Edit / Language / Help. The UI language follows the system by default, with 60+ languages available; also includes an About dialog and repository/website links.
+- Supports both zstd-compressed and plain JSONL session files, via the embedded zstd library — single-file distribution, no external DLLs.
 
 ## Quick Start
 
-Double-click `dist\dsh-chat-history-manage.exe` to launch:
-
-- **Menu bar**: **File** (choose session file, refresh list, export & save, exit), **Edit** (copy, select all, clear topic cache) and **Language** (switch the UI between 中文 and English — the choice is remembered).
-- **Session list (left pane)**: automatically scans every session under `C:\Users\<you>\.dsh\sessions` (newest first). Each row shows the session's **topic**, ID and last-updated time; the topic matches what the DSH sidebar shows (the latest `session/title` event) and fills in progressively in the background. Click a session to preview its transcript on the right in real time.
-- **Export directory**: defaults to the exe's own folder. Pick a folder via the system folder picker ("Browse…") or type a path manually. Your choice is remembered in `dsh-chat-history-manage.config.json` next to the exe — delete that file to restore the default.
-- **Export & Save**: writes `<session-ID>-transcript.md`, then offers to open the containing folder.
-- **Choose session file…**: manually pick a `session.jsonl` / `session.jsonl.zstd` file when the session is not in the default location.
-- Double-clicking a list item exports it directly.
-
-Both compressed (zstd) and uncompressed session files are supported; zstd decompression uses the embedded official libzstd library — single-file distribution, no external DLL needed.
+Double-click `dist\dsh-chat-history-manage.exe`, select a session, then **Export & Save** (or double-click a list item to export directly).
 
 ## Command-Line Self-Test
-
-The GUI program also keeps a windowless self-test entry point that runs the exact same logic as the UI:
 
 ```
 dsh-chat-history-manage.exe --selftest <session-file> <output.md>
 ```
 
-Returns 0 on success and writes the transcript; returns 1 on failure and writes the error to `<output.md>.err.txt`.
+Returns 0 on success and writes the transcript; returns 1 on failure with the error in `<output.md>.err.txt`.
 
 ## Rebuilding
 
-Double-click `build.cmd`, or run manually:
-
-```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /unsafe /codepage:65001 ^
-  /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll ^
-  /resource:native\libzstd.dll,libzstd.dll ^
-  /out:dist\dsh-chat-history-manage.exe src\dsh-chat-history-manage-gui.cs
-```
-
-After changing the UI/logic, recompile — the artifact lands in `dist\`.
+Double-click `build.cmd` to recompile `src\dsh-chat-history-manage-gui.cs` into `dist\dsh-chat-history-manage.exe` (the exact `csc.exe` command is in the script).
 
 ## Notes
 
-- `dsh-chat-history-manage.config.json` is a machine-local runtime config (export directory); it is not distributed with the program.
-- Session topics are cached in `dsh-chat-history-manage.titles.json` next to the exe (keyed by file mtime + size), so relaunching shows topics instantly; only changed/new sessions are re-read. Delete the file to rebuild the cache.
-- Blank sessions (no topic and no chat content — just an empty session header) are hidden from the list; the status bar reports how many were filtered.
+- `dsh-chat-history-manage.config.json` and `dsh-chat-history-manage.titles.json` are machine-local runtime files (export/session folders, language, topic cache); they are not distributed with the program.
 - Session files use DSH's private format (zstd-compressed JSONL event stream). This tool only **reads** them and never modifies any session file.
-- On a crash, error details are written to `%TEMP%\dsh-chat-history-manage-crash.log` for troubleshooting.
+- On a crash, error details are written to `%TEMP%\dsh-chat-history-manage-crash.log`.
