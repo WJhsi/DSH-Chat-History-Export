@@ -1,0 +1,10 @@
+# 运行时生成的本机配置（导出目录），不随项目分发
+recover-session.config.json
+
+# 日志 / 临时文件
+*.log
+*.err.txt
+
+# 构建产物（克隆后运行 build.cmd 自行构建）
+dist/
+sea-prep.blob
