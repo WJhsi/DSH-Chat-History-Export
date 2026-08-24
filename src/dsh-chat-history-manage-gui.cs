@@ -277,12 +277,24 @@ namespace DshChatHistoryManage
 
         public static string BuildTranscript(string raw)
         {
+            return BuildTranscript(raw, null);
+        }
+
+        /// <summary>onProgress(已处理行数, 总行数) 可选回调，用于加载进度显示（每 ~200 行触发一次）。</summary>
+        public static string BuildTranscript(string raw, Action<int, int> onProgress)
+        {
             StringBuilder sb = new StringBuilder();
             int turn = 0;
             string model = null; // 最近一次请求的模型（request/header 或 request/context 提供）
             JavaScriptSerializer ser = new JavaScriptSerializer();
-            foreach (string line0 in raw.Split('\n'))
+            string[] lines = raw.Split('\n');
+            int total = lines.Length;
+            int processed = 0;
+            foreach (string line0 in lines)
             {
+                processed++;
+                if (onProgress != null && (processed % 200 == 0 || processed == total))
+                    onProgress(processed, total);
                 string line = line0.Trim();
                 if (line.Length == 0) continue;
                 // 预过滤：只对包含目标事件类型的行做 JSON 解析（会话流里大部分行是 chunk/推理等无关事件，
@@ -463,6 +475,8 @@ namespace DshChatHistoryManage
             { "langZh", "中文" },
             { "langEn", "English" },
             { "statusReady", "就绪" },
+            { "statusLoading", "正在加载会话…" },
+            { "statusLoadingPct", "正在加载会话… {0}%" },
             { "linkGithub", "项目仓库" },
             { "statusLoaded", "已加载 {0} 个会话" },
             { "statusReading", "，正在读取主题…" },
@@ -511,6 +525,8 @@ namespace DshChatHistoryManage
             { "langZh", "中文" },
             { "langEn", "English" },
             { "statusReady", "Ready" },
+            { "statusLoading", "Loading session…" },
+            { "statusLoadingPct", "Loading session… {0}%" },
             { "linkGithub", "Project Repository" },
             { "statusLoaded", "Loaded {0} sessions" },
             { "statusReading", ", reading topics…" },
@@ -854,6 +870,8 @@ namespace DshChatHistoryManage
         private ToolStripStatusLabel lnkGithub, lnkSite; // 右下角链接（蓝色下划线，点击打开）
         private StatusStrip status;
         private ToolStripStatusLabel statusLabel;
+        private ToolStripProgressBar progressBar; // 会话加载进度条
+        private int loadToken; // 加载代数：切换会话时作废旧加载
         private List<SessionInfo> sessions = new List<SessionInfo>();
         private string pickedFile;
         private Label titleLabel, lbDir;
@@ -1040,6 +1058,11 @@ namespace DshChatHistoryManage
             statusLabel.TextAlign = ContentAlignment.MiddleLeft; // 文字靠左（ToolStripStatusLabel 默认居中，必须显式设置）
             statusLabel.Spring = true; // 占满剩余宽度，把右侧链接推到右下角
             status.Items.Add(statusLabel);
+            progressBar = new ToolStripProgressBar();
+            progressBar.Width = 140;
+            progressBar.Style = ProgressBarStyle.Continuous;
+            progressBar.Visible = false;
+            status.Items.Add(progressBar);
 
             // 右下角链接：用普通 ToolStripStatusLabel 伪装链接（蓝色+下划线+点击事件），
             // 比 ToolStripControlHost(LinkLabel) 渲染可靠得多
@@ -1406,25 +1429,56 @@ namespace DshChatHistoryManage
 
         private void ShowPreview(SessionInfo si)
         {
-            try
+            if (si.Transcript != null)
             {
-                Cursor = Cursors.WaitCursor;
-                if (si.Transcript == null)
-                {
-                    string raw = SessionReader.ReadSession(si.File);
-                    si.Transcript = SessionReader.BuildTranscript(raw);
-                }
+                // 已缓存：直接显示
                 SetPreview(si.Transcript);
                 statusLabel.Text = si.Id + " | " + si.File;
+                return;
             }
-            catch (Exception ex)
+            // 后台加载：解压 + 转录构建，进度实时显示在底部状态栏
+            int token = ++loadToken;
+            statusLabel.Text = Lang.T("statusLoading");
+            progressBar.Value = 0;
+            progressBar.Visible = true;
+            Cursor = Cursors.AppStarting;
+            Task.Run(delegate
             {
-                MessageBox.Show(this, Lang.T("msgReadFail") + ex.Message, Lang.T("msgError"), MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                Cursor = Cursors.Default;
-            }
+                try
+                {
+                    string raw = SessionReader.ReadSession(si.File);
+                    string md = SessionReader.BuildTranscript(raw, delegate (int done, int total)
+                    {
+                        if (token != loadToken) return; // 已切换到其他会话
+                        int pct = total <= 0 ? 0 : Math.Min(100, done * 100 / total);
+                        BeginInvoke((Action)delegate
+                        {
+                            if (token != loadToken) return;
+                            progressBar.Value = pct;
+                            statusLabel.Text = string.Format(Lang.T("statusLoadingPct"), pct);
+                        });
+                    });
+                    si.Transcript = md;
+                    BeginInvoke((Action)delegate
+                    {
+                        if (token != loadToken) return;
+                        progressBar.Visible = false;
+                        Cursor = Cursors.Default;
+                        SetPreview(md);
+                        statusLabel.Text = si.Id + " | " + si.File;
+                    });
+                }
+                catch (Exception ex)
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        if (token != loadToken) return;
+                        progressBar.Visible = false;
+                        Cursor = Cursors.Default;
+                        MessageBox.Show(this, Lang.T("msgReadFail") + ex.Message, Lang.T("msgError"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    });
+                }
+            });
         }
 
         private void SetPreview(string md)
