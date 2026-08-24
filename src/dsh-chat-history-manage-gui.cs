@@ -851,7 +851,7 @@ namespace DshChatHistoryManage
         private Button btnBrowse, btnOpenDir, btnRefresh, btnPick, btnExport;
         private PreviewView preview;
         private SplitContainer split; // 左列表 / 右预览分割（左宽随列宽自适应）
-        private LinkLabel lnkGithub, lnkSite; // 右下角链接
+        private ToolStripStatusLabel lnkGithub, lnkSite; // 右下角链接（蓝色下划线，点击打开）
         private StatusStrip status;
         private ToolStripStatusLabel statusLabel;
         private List<SessionInfo> sessions = new List<SessionInfo>();
@@ -1037,33 +1037,28 @@ namespace DshChatHistoryManage
             status = new StatusStrip();
             statusLabel = new ToolStripStatusLabel();
             statusLabel.Text = Lang.T("statusReady");
-            statusLabel.TextAlign = ContentAlignment.MiddleLeft; // 状态文字靠左，不居中
+            statusLabel.TextAlign = ContentAlignment.MiddleLeft; // 文字靠左（ToolStripStatusLabel 默认居中，必须显式设置）
+            statusLabel.Spring = true; // 占满剩余宽度，把右侧链接推到右下角
             status.Items.Add(statusLabel);
 
-            // 右下角链接：放进状态栏内部（ToolStripControlHost），右侧对齐，避免被主面板遮挡
-            ToolTip linkTip = new ToolTip();
-            lnkGithub = new LinkLabel();
+            // 右下角链接：用普通 ToolStripStatusLabel 伪装链接（蓝色+下划线+点击事件），
+            // 比 ToolStripControlHost(LinkLabel) 渲染可靠得多
+            lnkGithub = new ToolStripStatusLabel();
             lnkGithub.Text = Lang.T("linkGithub");
-            lnkGithub.AutoSize = true;
-            lnkGithub.BackColor = Color.Transparent;
-            lnkGithub.LinkBehavior = LinkBehavior.HoverUnderline;
-            lnkGithub.LinkClicked += delegate { OpenUrl("https://github.com/WJhsi/DSH-Chat-History-Export"); };
-            linkTip.SetToolTip(lnkGithub, "https://github.com/WJhsi/DSH-Chat-History-Export");
-            lnkSite = new LinkLabel();
+            lnkGithub.ForeColor = Color.FromArgb(0, 102, 204);
+            lnkGithub.Font = new Font(Font, FontStyle.Underline);
+            lnkGithub.Margin = new Padding(8, 0, 4, 0);
+            lnkGithub.ToolTipText = "https://github.com/WJhsi/DSH-Chat-History-Export";
+            lnkGithub.Click += delegate { OpenUrl("https://github.com/WJhsi/DSH-Chat-History-Export"); };
+            lnkSite = new ToolStripStatusLabel();
             lnkSite.Text = "www.hsij.cn";
-            lnkSite.AutoSize = true;
-            lnkSite.BackColor = Color.Transparent;
-            lnkSite.LinkBehavior = LinkBehavior.HoverUnderline;
-            lnkSite.LinkClicked += delegate { OpenUrl("https://www.hsij.cn"); };
-            linkTip.SetToolTip(lnkSite, "https://www.hsij.cn");
-            ToolStripControlHost hostGithub = new ToolStripControlHost(lnkGithub);
-            hostGithub.Alignment = ToolStripItemAlignment.Right;
-            hostGithub.Padding = new Padding(4, 0, 10, 0);
-            ToolStripControlHost hostSite = new ToolStripControlHost(lnkSite);
-            hostSite.Alignment = ToolStripItemAlignment.Right;
-            hostSite.Padding = new Padding(0, 0, 10, 0);
-            status.Items.Add(hostGithub);
-            status.Items.Add(hostSite);
+            lnkSite.ForeColor = Color.FromArgb(0, 102, 204);
+            lnkSite.Font = new Font(Font, FontStyle.Underline);
+            lnkSite.Margin = new Padding(4, 0, 10, 0);
+            lnkSite.ToolTipText = "https://www.hsij.cn";
+            lnkSite.Click += delegate { OpenUrl("https://www.hsij.cn"); };
+            status.Items.Add(lnkGithub);
+            status.Items.Add(lnkSite);
             Controls.Add(status);
 
             btnRefresh.Click += delegate { LoadSessions(); };
