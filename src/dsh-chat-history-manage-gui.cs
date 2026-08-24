@@ -1339,22 +1339,14 @@ namespace DshChatHistoryManage
             mEdit.DropDownItems.Add(editClearCache);
 
             mLang = new ToolStripMenuItem(Lang.T("menuLang"));
-            ToolStripMenuItem grpCommon = new ToolStripMenuItem(Lang.T("langGroupCommon"));
-            ToolStripMenuItem grpEurope = new ToolStripMenuItem(Lang.T("langGroupEurope"));
-            ToolStripMenuItem grpAsia = new ToolStripMenuItem(Lang.T("langGroupAsia"));
-            ToolStripMenuItem grpAfrica = new ToolStripMenuItem(Lang.T("langGroupAfrica"));
-            foreach (string code in new[] { "zh", "en", "zh-TW", "ja", "ko", "fr", "de", "es", "pt", "ru", "it", "nl", "pl", "uk", "tr", "th", "vi", "id", "ms", "hi", "ar", "sv" })
-                grpCommon.DropDownItems.Add(MakeLangItem(code));
-            foreach (string code in new[] { "da", "no", "fi", "is", "el", "cs", "sk", "hu", "ro", "bg", "sr", "hr", "sl", "lt", "lv", "et", "ca", "gl", "eu", "eo" })
-                grpEurope.DropDownItems.Add(MakeLangItem(code));
-            foreach (string code in new[] { "bn", "ta", "te", "kn", "ml", "mr", "ne", "si", "my", "km", "fa", "he", "az", "kk", "uz", "mn", "ka", "hy" })
-                grpAsia.DropDownItems.Add(MakeLangItem(code));
-            foreach (string code in new[] { "sw", "af", "fil" })
-                grpAfrica.DropDownItems.Add(MakeLangItem(code));
-            mLang.DropDownItems.Add(grpCommon);
-            mLang.DropDownItems.Add(grpEurope);
-            mLang.DropDownItems.Add(grpAsia);
-            mLang.DropDownItems.Add(grpAfrica);
+            foreach (string code in new[]
+            {
+                "zh", "en", "zh-TW", "ja", "ko", "fr", "de", "es", "pt", "ru", "it", "nl", "pl", "uk", "tr", "th", "vi", "id", "ms", "hi", "ar", "sv",
+                "da", "no", "fi", "is", "el", "cs", "sk", "hu", "ro", "bg", "sr", "hr", "sl", "lt", "lv", "et", "ca", "gl", "eu", "eo",
+                "bn", "ta", "te", "kn", "ml", "mr", "ne", "si", "my", "km", "fa", "he", "az", "kk", "uz", "mn", "ka", "hy",
+                "sw", "af", "fil"
+            })
+                mLang.DropDownItems.Add(MakeLangItem(code));
 
             mHelp = new ToolStripMenuItem(Lang.T("menuHelp"));
             aboutItem = new ToolStripMenuItem(Lang.T("about"), null, delegate { ShowAbout(); });
