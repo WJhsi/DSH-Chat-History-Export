@@ -448,6 +448,7 @@ namespace DshChatHistoryManage
             { "langZh", "中文" },
             { "langEn", "English" },
             { "statusReady", "就绪" },
+            { "linkGithub", "GitHub 项目" },
             { "statusLoaded", "已加载 {0} 个会话" },
             { "statusReading", "，正在读取主题…" },
             { "statusNoSessions", "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" },
@@ -495,6 +496,7 @@ namespace DshChatHistoryManage
             { "langZh", "中文" },
             { "langEn", "English" },
             { "statusReady", "Ready" },
+            { "linkGithub", "GitHub Project" },
             { "statusLoaded", "Loaded {0} sessions" },
             { "statusReading", ", reading topics…" },
             { "statusNoSessions", " (no ~/.dsh/sessions found — use “Choose session file…”)" },
@@ -834,6 +836,7 @@ namespace DshChatHistoryManage
         private Button btnBrowse, btnOpenDir, btnRefresh, btnPick, btnExport;
         private PreviewView preview;
         private SplitContainer split; // 左列表 / 右预览分割（左宽随列宽自适应）
+        private LinkLabel lnkGithub, lnkSite; // 右下角链接
         private StatusStrip status;
         private ToolStripStatusLabel statusLabel;
         private List<SessionInfo> sessions = new List<SessionInfo>();
@@ -1019,8 +1022,27 @@ namespace DshChatHistoryManage
             status = new StatusStrip();
             statusLabel = new ToolStripStatusLabel();
             statusLabel.Text = Lang.T("statusReady");
+            statusLabel.Spring = true; // 状态文字占满左侧，把链接推到右下角
             status.Items.Add(statusLabel);
             Controls.Add(status);
+
+            // 右下角链接：GitHub 项目 + 网站
+            ToolTip linkTip = new ToolTip();
+            lnkGithub = new LinkLabel();
+            lnkGithub.Text = Lang.T("linkGithub");
+            lnkGithub.LinkBehavior = LinkBehavior.HoverUnderline;
+            lnkGithub.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            linkTip.SetToolTip(lnkGithub, "https://github.com/WJhsi/DSH-Chat-History-Export");
+            lnkGithub.LinkClicked += delegate { OpenUrl("https://github.com/WJhsi/DSH-Chat-History-Export"); };
+            lnkSite = new LinkLabel();
+            lnkSite.Text = "www.hsij.cn";
+            lnkSite.LinkBehavior = LinkBehavior.HoverUnderline;
+            lnkSite.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            linkTip.SetToolTip(lnkSite, "https://www.hsij.cn");
+            lnkSite.LinkClicked += delegate { OpenUrl("https://www.hsij.cn"); };
+            Controls.Add(lnkSite);
+            Controls.Add(lnkGithub);
+            PositionLinks();
 
             btnRefresh.Click += delegate { LoadSessions(); };
             btnPick.Click += delegate { PickFile(); };
@@ -1114,6 +1136,11 @@ namespace DshChatHistoryManage
             langEnItem.Text = Lang.T("langEn");
             langZhItem.Checked = lang == "zh";
             langEnItem.Checked = lang == "en";
+            if (lnkGithub != null)
+            {
+                lnkGithub.Text = Lang.T("linkGithub");
+                PositionLinks();
+            }
             statusLabel.Text = Lang.T("statusReady");
             SaveConfig(dirBox.Text.Trim()); // 记住语言选择
         }
@@ -1484,6 +1511,31 @@ namespace DshChatHistoryManage
                     Process.Start("explorer.exe", "\"" + dir + "\"");
             }
             catch { }
+        }
+
+        /// <summary>用默认浏览器打开链接（右下角 GitHub / 网站）。</summary>
+        private void OpenUrl(string url)
+        {
+            try { Process.Start(url); }
+            catch { }
+        }
+
+        /// <summary>右下角链接定位：紧贴状态栏右侧。</summary>
+        private void PositionLinks()
+        {
+            if (lnkGithub == null || lnkSite == null) return;
+            using (Graphics g = CreateGraphics())
+            {
+                int h = 20;
+                int siteW = TextRenderer.MeasureText(lnkSite.Text, lnkSite.Font, new Size(int.MaxValue, h), TextFormatFlags.NoPadding).Width + 6;
+                int ghW = TextRenderer.MeasureText(lnkGithub.Text, lnkGithub.Font, new Size(int.MaxValue, h), TextFormatFlags.NoPadding).Width + 6;
+                lnkSite.Height = h; lnkSite.Width = siteW;
+                lnkGithub.Height = h; lnkGithub.Width = ghW;
+                int bottom = ClientSize.Height - 26;
+                int right = ClientSize.Width - 10;
+                lnkSite.Location = new Point(right - siteW, bottom);
+                lnkGithub.Location = new Point(right - siteW - ghW - 18, bottom);
+            }
         }
 
         private void LoadConfig()
