@@ -388,6 +388,109 @@ namespace DshChatHistoryExport
         }
     }
 
+    // ---------- 界面语言（中文 / English） ----------
+    static class Lang
+    {
+        public static string Current = "zh"; // "zh" | "en"，启动时从配置读取
+
+        private static readonly Dictionary<string, string> Zh = new Dictionary<string, string>
+        {
+            { "title", "DSH Chat-History Export — 聊天记录导出工具" },
+            { "titleLabel", "DSH Chat-History Export" },
+            { "dirLabel", "导出目录:" },
+            { "browse", "浏览…" },
+            { "openDir", "打开目录" },
+            { "refresh", "刷新列表" },
+            { "pick", "选择会话文件…" },
+            { "exportBtn", "导出并保存" },
+            { "colTopic", "主题" },
+            { "colId", "会话 ID" },
+            { "colTime", "时间" },
+            { "menuFile", "文件" },
+            { "menuEdit", "编辑" },
+            { "menuLang", "语言" },
+            { "filePick", "选择会话文件…" },
+            { "fileRefresh", "刷新列表" },
+            { "fileExport", "导出并保存" },
+            { "fileExit", "退出" },
+            { "editCopy", "复制" },
+            { "editSelectAll", "全选" },
+            { "editClearCache", "清除主题缓存" },
+            { "langZh", "中文" },
+            { "langEn", "English" },
+            { "statusReady", "就绪" },
+            { "statusLoaded", "已加载 {0} 个会话" },
+            { "statusReading", "，正在读取主题…" },
+            { "statusNoSessions", "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" },
+            { "statusSelected", "已选择: " },
+            { "statusGenerated", "已生成: " },
+            { "msgInfo", "提示" },
+            { "msgError", "错误" },
+            { "msgExportDone", "导出完成" },
+            { "msgOpenFolder", "已生成:\n{0}\n\n是否打开所在文件夹？" },
+            { "msgNoSession", "请先在左侧列表选择一个会话，或点“选择会话文件…”" },
+            { "msgNoDir", "请先设置导出目录" },
+            { "msgReadFail", "读取失败:\n" },
+            { "msgExportFail", "导出失败:\n" },
+            { "pickDialogTitle", "选择 DSH 会话文件 (session.jsonl / session.jsonl.zstd)" },
+            { "pickDialogFilter", "会话文件 (*.jsonl*)|*.jsonl*|所有文件 (*.*)|*.*" },
+            { "folderDialogDesc", "选择导出目录" },
+            { "previewTruncated", "…（预览已截断，导出文件为完整内容）" },
+        };
+
+        private static readonly Dictionary<string, string> En = new Dictionary<string, string>
+        {
+            { "title", "DSH Chat-History Export — Chat History Export Tool" },
+            { "titleLabel", "DSH Chat-History Export" },
+            { "dirLabel", "Export directory:" },
+            { "browse", "Browse…" },
+            { "openDir", "Open folder" },
+            { "refresh", "Refresh list" },
+            { "pick", "Choose session file…" },
+            { "exportBtn", "Export & Save" },
+            { "colTopic", "Topic" },
+            { "colId", "Session ID" },
+            { "colTime", "Time" },
+            { "menuFile", "&File" },
+            { "menuEdit", "&Edit" },
+            { "menuLang", "&Language" },
+            { "filePick", "&Choose session file…" },
+            { "fileRefresh", "&Refresh list" },
+            { "fileExport", "&Export and Save" },
+            { "fileExit", "E&xit" },
+            { "editCopy", "&Copy" },
+            { "editSelectAll", "Select &All" },
+            { "editClearCache", "&Clear topic cache" },
+            { "langZh", "中文" },
+            { "langEn", "English" },
+            { "statusReady", "Ready" },
+            { "statusLoaded", "Loaded {0} sessions" },
+            { "statusReading", ", reading topics…" },
+            { "statusNoSessions", " (no ~/.dsh/sessions found — use “Choose session file…”)" },
+            { "statusSelected", "Selected: " },
+            { "statusGenerated", "Generated: " },
+            { "msgInfo", "Info" },
+            { "msgError", "Error" },
+            { "msgExportDone", "Export complete" },
+            { "msgOpenFolder", "Generated:\n{0}\n\nOpen the containing folder?" },
+            { "msgNoSession", "Please select a session from the list, or use “Choose session file…”" },
+            { "msgNoDir", "Please set the export directory first" },
+            { "msgReadFail", "Failed to read:\n" },
+            { "msgExportFail", "Export failed:\n" },
+            { "pickDialogTitle", "Choose DSH session file (session.jsonl / session.jsonl.zstd)" },
+            { "pickDialogFilter", "Session files (*.jsonl*)|*.jsonl*|All files (*.*)|*.*" },
+            { "folderDialogDesc", "Choose export folder" },
+            { "previewTruncated", "…(preview truncated; the exported file contains the full content)" },
+        };
+
+        public static string T(string key)
+        {
+            Dictionary<string, string> dict = Current == "en" ? En : Zh;
+            string v;
+            return dict.TryGetValue(key, out v) ? v : key;
+        }
+    }
+
     // ---------- 主窗口 ----------
     class SessionInfo
     {
@@ -408,6 +511,13 @@ namespace DshChatHistoryExport
         private ToolStripStatusLabel statusLabel;
         private List<SessionInfo> sessions = new List<SessionInfo>();
         private string pickedFile;
+        private Label titleLabel, lbDir;
+        // 菜单栏（文件 / 编辑 / 语言）
+        private MenuStrip menu;
+        private ToolStripMenuItem mFile, mEdit, mLang;
+        private ToolStripMenuItem filePick, fileRefresh, fileExport, fileExit;
+        private ToolStripMenuItem editCopy, editSelectAll, editClearCache;
+        private ToolStripMenuItem langZhItem, langEnItem;
         // 主题缓存条目：修改时间（Unix 毫秒）+ 文件大小，两者都匹配才复用，避免文件被改写后误用旧主题
         private class TitleCacheEntry
         {
@@ -477,7 +587,7 @@ namespace DshChatHistoryExport
 
         public MainForm()
         {
-            Text = "DSH Chat-History Export — 聊天记录导出工具";
+            Text = Lang.T("title");
             Font = new Font("Microsoft YaHei UI", 9.5f);
             ClientSize = new Size(1000, 680);
             MinimumSize = new Size(780, 520);
@@ -494,9 +604,10 @@ namespace DshChatHistoryExport
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
             Label title = new Label();
-            title.Text = "DSH Chat-History Export";
+            title.Text = Lang.T("titleLabel");
             title.Font = new Font("Microsoft YaHei UI", 14f, FontStyle.Bold);
             title.AutoSize = true;
+            titleLabel = title;
             root.Controls.Add(title, 0, 0);
 
             TableLayoutPanel dirRow = new TableLayoutPanel();
@@ -510,13 +621,14 @@ namespace DshChatHistoryExport
             dirRow.Margin = new Padding(0, 8, 0, 0);
 
             Label lb = new Label();
-            lb.Text = "导出目录:";
+            lb.Text = Lang.T("dirLabel");
             lb.AutoSize = true;
             lb.Anchor = AnchorStyles.Left;
+            lbDir = lb;
             dirBox = new TextBox();
             dirBox.Dock = DockStyle.Fill;
-            btnBrowse = MkButton("浏览…", 84);
-            btnOpenDir = MkButton("打开目录", 92);
+            btnBrowse = MkButton(Lang.T("browse"), 84);
+            btnOpenDir = MkButton(Lang.T("openDir"), 92);
             dirRow.Controls.Add(lb, 0, 0);
             dirRow.Controls.Add(dirBox, 1, 0);
             dirRow.Controls.Add(btnBrowse, 2, 0);
@@ -527,9 +639,9 @@ namespace DshChatHistoryExport
             actions.Dock = DockStyle.Fill;
             actions.AutoSize = true;
             actions.Margin = new Padding(0, 8, 0, 8);
-            btnRefresh = MkButton("刷新列表", 120);
-            btnPick = MkButton("选择会话文件…", 140);
-            btnExport = MkButton("导出并保存", 120);
+            btnRefresh = MkButton(Lang.T("refresh"), 120);
+            btnPick = MkButton(Lang.T("pick"), 140);
+            btnExport = MkButton(Lang.T("exportBtn"), 120);
             actions.Controls.Add(btnRefresh);
             actions.Controls.Add(btnPick);
             actions.Controls.Add(btnExport);
@@ -545,9 +657,9 @@ namespace DshChatHistoryExport
             list.View = View.Details;
             list.FullRowSelect = true;
             list.HideSelection = false;
-            list.Columns.Add("主题", 190);
-            list.Columns.Add("会话 ID", 200);
-            list.Columns.Add("时间", 110);
+            list.Columns.Add(Lang.T("colTopic"), 190);
+            list.Columns.Add(Lang.T("colId"), 200);
+            list.Columns.Add(Lang.T("colTime"), 110);
             split.Panel1.Controls.Add(list);
 
             preview = new RichTextBox();
@@ -563,7 +675,7 @@ namespace DshChatHistoryExport
 
             status = new StatusStrip();
             statusLabel = new ToolStripStatusLabel();
-            statusLabel.Text = "就绪";
+            statusLabel.Text = Lang.T("statusReady");
             status.Items.Add(statusLabel);
             Controls.Add(status);
 
@@ -575,7 +687,9 @@ namespace DshChatHistoryExport
             list.SelectedIndexChanged += delegate { OnSelect(); };
             list.DoubleClick += delegate { Export(); };
 
+            BuildMenu();
             LoadConfig();
+            ApplyLanguage(Lang.Current); // 按配置的语言刷新全部界面文案
             LoadTitleCache();
             LoadSessions();
         }
@@ -584,6 +698,94 @@ namespace DshChatHistoryExport
         {
             SaveTitleCache(); // 收尾写回主题缓存，下次启动直接复用
             base.OnFormClosing(e);
+        }
+
+        // ---------- 菜单栏（文件 / 编辑 / 语言） ----------
+        private void BuildMenu()
+        {
+            menu = new MenuStrip();
+            menu.Font = Font;
+
+            mFile = new ToolStripMenuItem(Lang.T("menuFile"));
+            filePick = new ToolStripMenuItem(Lang.T("filePick"), null, delegate { PickFile(); });
+            fileRefresh = new ToolStripMenuItem(Lang.T("fileRefresh"), null, delegate { LoadSessions(); });
+            fileRefresh.ShortcutKeys = Keys.F5;
+            fileExport = new ToolStripMenuItem(Lang.T("fileExport"), null, delegate { Export(); });
+            fileExit = new ToolStripMenuItem(Lang.T("fileExit"), null, delegate { Close(); });
+            mFile.DropDownItems.Add(filePick);
+            mFile.DropDownItems.Add(fileRefresh);
+            mFile.DropDownItems.Add(fileExport);
+            mFile.DropDownItems.Add(new ToolStripSeparator());
+            mFile.DropDownItems.Add(fileExit);
+
+            mEdit = new ToolStripMenuItem(Lang.T("menuEdit"));
+            editCopy = new ToolStripMenuItem(Lang.T("editCopy"), null, delegate { try { preview.Copy(); } catch { } });
+            editCopy.ShortcutKeys = Keys.Control | Keys.C;
+            editSelectAll = new ToolStripMenuItem(Lang.T("editSelectAll"), null, delegate { preview.SelectAll(); });
+            editSelectAll.ShortcutKeys = Keys.Control | Keys.A;
+            editClearCache = new ToolStripMenuItem(Lang.T("editClearCache"), null, delegate { ClearTitleCache(); });
+            mEdit.DropDownItems.Add(editCopy);
+            mEdit.DropDownItems.Add(editSelectAll);
+            mEdit.DropDownItems.Add(new ToolStripSeparator());
+            mEdit.DropDownItems.Add(editClearCache);
+
+            mLang = new ToolStripMenuItem(Lang.T("menuLang"));
+            langZhItem = new ToolStripMenuItem(Lang.T("langZh"), null, delegate { ApplyLanguage("zh"); });
+            langEnItem = new ToolStripMenuItem(Lang.T("langEn"), null, delegate { ApplyLanguage("en"); });
+            mLang.DropDownItems.Add(langZhItem);
+            mLang.DropDownItems.Add(langEnItem);
+
+            menu.Items.Add(mFile);
+            menu.Items.Add(mEdit);
+            menu.Items.Add(mLang);
+            MainMenuStrip = menu;
+            Controls.Add(menu);
+        }
+
+        /// <summary>应用界面语言：更新全部文案并持久化到配置。</summary>
+        private void ApplyLanguage(string lang)
+        {
+            Lang.Current = lang;
+            Text = Lang.T("title");
+            titleLabel.Text = Lang.T("titleLabel");
+            lbDir.Text = Lang.T("dirLabel");
+            btnBrowse.Text = Lang.T("browse");
+            btnOpenDir.Text = Lang.T("openDir");
+            btnRefresh.Text = Lang.T("refresh");
+            btnPick.Text = Lang.T("pick");
+            btnExport.Text = Lang.T("exportBtn");
+            if (list.Columns.Count >= 3)
+            {
+                list.Columns[0].Text = Lang.T("colTopic");
+                list.Columns[1].Text = Lang.T("colId");
+                list.Columns[2].Text = Lang.T("colTime");
+            }
+            ResizeColumns();
+            mFile.Text = Lang.T("menuFile");
+            filePick.Text = Lang.T("filePick");
+            fileRefresh.Text = Lang.T("fileRefresh");
+            fileExport.Text = Lang.T("fileExport");
+            fileExit.Text = Lang.T("fileExit");
+            mEdit.Text = Lang.T("menuEdit");
+            editCopy.Text = Lang.T("editCopy");
+            editSelectAll.Text = Lang.T("editSelectAll");
+            editClearCache.Text = Lang.T("editClearCache");
+            mLang.Text = Lang.T("menuLang");
+            langZhItem.Text = Lang.T("langZh");
+            langEnItem.Text = Lang.T("langEn");
+            langZhItem.Checked = lang == "zh";
+            langEnItem.Checked = lang == "en";
+            statusLabel.Text = Lang.T("statusReady");
+            SaveConfig(dirBox.Text.Trim()); // 记住语言选择
+        }
+
+        /// <summary>清除主题磁盘/内存缓存并重新扫描。</summary>
+        private void ClearTitleCache()
+        {
+            lock (titleCache) titleCache.Clear();
+            try { File.Delete(CachePath); } catch { }
+            statusLabel.Text = Lang.T("statusReady");
+            LoadSessions();
         }
 
         private static Button MkButton(string text, int width)
@@ -664,9 +866,9 @@ namespace DshChatHistoryExport
             }
             list.EndUpdate();
             ResizeColumns();
-            statusLabel.Text = "已加载 " + sessions.Count + " 个会话"
-                + (sessions.Count == 0 ? "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" : "")
-                + (pending.Count > 0 ? "，正在读取主题…" : "");
+            statusLabel.Text = string.Format(Lang.T("statusLoaded"), sessions.Count)
+                + (sessions.Count == 0 ? Lang.T("statusNoSessions") : "")
+                + (pending.Count > 0 ? Lang.T("statusReading") : "");
             if (pending.Count > 0) ScanTitles(pending, gen);
         }
 
@@ -748,7 +950,7 @@ namespace DshChatHistoryExport
                 if (IsDisposed || gen != scanGen) return;
                 BeginInvoke((Action)delegate
                 {
-                    statusLabel.Text = "已加载 " + sessions.Count + " 个会话";
+                    statusLabel.Text = string.Format(Lang.T("statusLoaded"), sessions.Count);
                 });
             });
         }
@@ -776,7 +978,7 @@ namespace DshChatHistoryExport
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "读取失败:\n" + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, Lang.T("msgReadFail") + ex.Message, Lang.T("msgError"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -787,7 +989,7 @@ namespace DshChatHistoryExport
         private void SetPreview(string md)
         {
             if (md.Length > 600000)
-                md = md.Substring(0, 600000) + "\n\n…（预览已截断，导出文件为完整内容）";
+                md = md.Substring(0, 600000) + "\n\n" + Lang.T("previewTruncated");
             preview.Text = md;
             preview.SelectionStart = 0;
             preview.ScrollToCaret();
@@ -797,8 +999,8 @@ namespace DshChatHistoryExport
         {
             using (OpenFileDialog ofd = new OpenFileDialog())
             {
-                ofd.Title = "选择 DSH 会话文件 (session.jsonl / session.jsonl.zstd)";
-                ofd.Filter = "会话文件 (*.jsonl*)|*.jsonl*|所有文件 (*.*)|*.*";
+                ofd.Title = Lang.T("pickDialogTitle");
+                ofd.Filter = Lang.T("pickDialogFilter");
                 ofd.InitialDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
                 if (ofd.ShowDialog(this) != DialogResult.OK) return;
                 pickedFile = ofd.FileName;
@@ -807,7 +1009,7 @@ namespace DshChatHistoryExport
                 si.Id = Path.GetFileName(ofd.FileName);
                 si.File = ofd.FileName;
                 ShowPreview(si);
-                statusLabel.Text = "已选择: " + ofd.FileName;
+                statusLabel.Text = Lang.T("statusSelected") + ofd.FileName;
             }
         }
 
@@ -815,7 +1017,7 @@ namespace DshChatHistoryExport
         {
             using (FolderBrowserDialog fbd = new FolderBrowserDialog())
             {
-                fbd.Description = "选择导出目录";
+                fbd.Description = Lang.T("folderDialogDesc");
                 if (fbd.ShowDialog(this) == DialogResult.OK)
                 {
                     dirBox.Text = fbd.SelectedPath;
@@ -839,14 +1041,14 @@ namespace DshChatHistoryExport
             }
             if (input == null)
             {
-                MessageBox.Show(this, "请先在左侧列表选择一个会话，或点“选择会话文件…”", "提示",
+                MessageBox.Show(this, Lang.T("msgNoSession"), Lang.T("msgInfo"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             string dir = dirBox.Text.Trim();
             if (dir.Length == 0)
             {
-                MessageBox.Show(this, "请先设置导出目录", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, Lang.T("msgNoDir"), Lang.T("msgInfo"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             try
@@ -865,14 +1067,14 @@ namespace DshChatHistoryExport
                 File.WriteAllText(outFile, si.Transcript, new UTF8Encoding(false));
                 SaveConfig(dir);
                 SetPreview(si.Transcript);
-                statusLabel.Text = "已生成: " + outFile;
-                DialogResult r = MessageBox.Show(this, "已生成:\n" + outFile + "\n\n是否打开所在文件夹？", "导出完成",
+                statusLabel.Text = Lang.T("statusGenerated") + outFile;
+                DialogResult r = MessageBox.Show(this, string.Format(Lang.T("msgOpenFolder"), outFile), Lang.T("msgExportDone"),
                     MessageBoxButtons.YesNo, MessageBoxIcon.Information);
                 if (r == DialogResult.Yes) OpenExplorer(dir, outFile);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "导出失败:\n" + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, Lang.T("msgExportFail") + ex.Message, Lang.T("msgError"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
@@ -902,10 +1104,18 @@ namespace DshChatHistoryExport
                 {
                     Dictionary<string, object> cfg =
                         new JavaScriptSerializer().DeserializeObject(File.ReadAllText(ConfigPath)) as Dictionary<string, object>;
-                    if (cfg != null && cfg.ContainsKey("exportDir"))
+                    if (cfg != null)
                     {
-                        string d = Convert.ToString(cfg["exportDir"]);
-                        if (Directory.Exists(d)) dirBox.Text = d;
+                        if (cfg.ContainsKey("exportDir"))
+                        {
+                            string d = Convert.ToString(cfg["exportDir"]);
+                            if (Directory.Exists(d)) dirBox.Text = d;
+                        }
+                        if (cfg.ContainsKey("lang"))
+                        {
+                            string l = Convert.ToString(cfg["lang"]);
+                            if (l == "zh" || l == "en") Lang.Current = l;
+                        }
                     }
                 }
             }
@@ -918,6 +1128,7 @@ namespace DshChatHistoryExport
             {
                 Dictionary<string, object> cfg = new Dictionary<string, object>();
                 cfg["exportDir"] = exportDir;
+                cfg["lang"] = Lang.Current;
                 File.WriteAllText(ConfigPath, new JavaScriptSerializer().Serialize(cfg), new UTF8Encoding(false));
             }
             catch { }
