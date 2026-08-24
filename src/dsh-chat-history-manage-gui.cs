@@ -464,6 +464,28 @@ namespace DshChatHistoryManage
 
         public static readonly List<Language> Languages = new List<Language>();
 
+        /// <summary>各语言的英文名（菜单按英文名 A-Z 显示排序；原生名无法跨文字排序）。</summary>
+        public static readonly Dictionary<string, string> EnglishNames = new Dictionary<string, string>
+        {
+            { "af", "Afrikaans" }, { "ar", "Arabic" }, { "hy", "Armenian" }, { "az", "Azerbaijani" },
+            { "bn", "Bangla" }, { "eu", "Basque" }, { "bg", "Bulgarian" }, { "my", "Burmese" },
+            { "ca", "Catalan" }, { "zh", "Chinese (Simplified)" }, { "zh-HK", "Chinese (Traditional, Hong Kong)" },
+            { "zh-MO", "Chinese (Traditional, Macau)" }, { "zh-TW", "Chinese (Traditional, Taiwan)" },
+            { "hr", "Croatian" }, { "cs", "Czech" }, { "da", "Danish" }, { "nl", "Dutch" },
+            { "en", "English" }, { "eo", "Esperanto" }, { "et", "Estonian" }, { "fil", "Filipino" },
+            { "fi", "Finnish" }, { "fr", "French" }, { "gl", "Galician" }, { "ka", "Georgian" },
+            { "de", "German" }, { "el", "Greek" }, { "he", "Hebrew" }, { "hi", "Hindi" },
+            { "hu", "Hungarian" }, { "is", "Icelandic" }, { "id", "Indonesian" }, { "it", "Italian" },
+            { "ja", "Japanese" }, { "kn", "Kannada" }, { "kk", "Kazakh" }, { "km", "Khmer" },
+            { "ko", "Korean" }, { "lv", "Latvian" }, { "lt", "Lithuanian" }, { "ms", "Malay" },
+            { "ml", "Malayalam" }, { "mr", "Marathi" }, { "mn", "Mongolian" }, { "ne", "Nepali" },
+            { "no", "Norwegian" }, { "fa", "Persian" }, { "pl", "Polish" }, { "pt", "Portuguese" },
+            { "ro", "Romanian" }, { "ru", "Russian" }, { "sr", "Serbian" }, { "si", "Sinhala" },
+            { "sk", "Slovak" }, { "sl", "Slovenian" }, { "es", "Spanish" }, { "sw", "Swahili" },
+            { "sv", "Swedish" }, { "ta", "Tamil" }, { "te", "Telugu" }, { "th", "Thai" },
+            { "tr", "Turkish" }, { "uk", "Ukrainian" }, { "uz", "Uzbek" }, { "vi", "Vietnamese" },
+        };
+
         // 所有语言都翻译的核心键（其余键缺失时回退英文）
         private static readonly string[] CoreKeys =
         {
@@ -1407,11 +1429,16 @@ namespace DshChatHistoryManage
             }
         }
 
-        /// <summary>创建一个语言菜单项（原生语言名显示，点击切换语言）。</summary>
+        /// <summary>创建一个语言菜单项（英文名显示、A-Z 排序；点击切换语言）。</summary>
         private ToolStripMenuItem MakeLangItem(string code)
         {
-            Lang.Language l = Lang.ByCode(code);
-            ToolStripMenuItem it = new ToolStripMenuItem(l != null ? l.NativeName : code);
+            string name;
+            if (!Lang.EnglishNames.TryGetValue(code, out name))
+            {
+                Lang.Language l = Lang.ByCode(code);
+                name = l != null ? l.NativeName : code;
+            }
+            ToolStripMenuItem it = new ToolStripMenuItem(name);
             it.Tag = code;
             it.Click += delegate { ApplyLanguage(code); };
             langItems.Add(it);
