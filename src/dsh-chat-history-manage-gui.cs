@@ -284,6 +284,16 @@ namespace DshChatHistoryManage
             {
                 string line = line0.Trim();
                 if (line.Length == 0) continue;
+                // 预过滤：只对包含目标事件类型的行做 JSON 解析（会话流里大部分行是 chunk/推理等无关事件，
+                // JavaScriptSerializer 逐行解析非常慢，跳过可把大会话的转录构建从数秒降到亚秒级）
+                if (line.IndexOf("\"type\":\"turn/start\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"user/message\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"assistant/message\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"tool/call\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"tool/result\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"compaction/end\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"turn/end\"", StringComparison.Ordinal) < 0)
+                    continue;
                 try
                 {
                     Dictionary<string, object> e = ser.DeserializeObject(line) as Dictionary<string, object>;
@@ -522,7 +532,7 @@ namespace DshChatHistoryManage
         private class Block
         {
             public BlockKind Kind;
-            public string Text;    // 要绘制的文本（已清洗，无 emoji）
+            public string Text;    // 要绘制的文本（已清洗）
             public string Header;  // 工具块的折叠头（无箭头，如 "pwsh — OK"）
             public bool Collapsed; // 工具块是否折叠
             public Font Font;
@@ -531,12 +541,18 @@ namespace DshChatHistoryManage
             public int Height;
             public int HeaderHeight; // 工具块头部行高（可点击区域）
             public int DetailHeight; // 工具块细节行高（展开时显示）
+            public Bitmap Cache;     // 已渲染位图（按当前宽度缓存，滚动/切换直接 blit）
+            public int CacheWidth;
         }
 
         private List<Block> blocks = new List<Block>();
         private string fullText = ""; // 完整转录（供复制）
+        private string lastMd;        // 上次解析的显示文本：重复点击同一会话时复用块（含折叠状态）
+        private bool blocksDirty = true; // 块内容变化后需重测高度
         private int layoutWidth = -1;
         private const int PadX = 10;
+        private const int MaxBlockChars = 6000; // 显示截断上限：限制 CJK 换行布局成本
+        private long cacheBytes; // 位图缓存总字节，超限整体清空防内存膨胀
         private Font fBase, fBold, fHead, fToolHead, fToolDetail;
 
         public PreviewView()
@@ -555,9 +571,16 @@ namespace DshChatHistoryManage
         public void SetContent(string displayMd, string fullMd)
         {
             fullText = fullMd ?? displayMd;
-            blocks.Clear();
-            layoutWidth = -1;
-            BuildBlocks(displayMd ?? "");
+            string md = displayMd ?? "";
+            if (md != lastMd)
+            {
+                lastMd = md;
+                ClearCaches(); // 释放旧块位图
+                blocks.Clear();
+                BuildBlocks(md);
+                blocksDirty = true; // 新块需要测量
+            }
+            // 同一会话再次点击：块已缓存（含折叠状态），宽度未变则连测量都跳过
             Relayout();
             AutoScrollPosition = new Point(0, 0);
             Invalidate();
@@ -586,12 +609,12 @@ namespace DshChatHistoryManage
                     Color c = Color.FromArgb(31, 78, 121); // 用户轮次：蓝
                     if (body.StartsWith("⏳")) c = Color.FromArgb(178, 107, 0); // 压缩：橙
                     else if (body.StartsWith("❌")) c = Color.FromArgb(192, 0, 0); // 错误：红
-                    blocks.Add(MakeBlock(BlockKind.Heading, Sanitize(body), c, fHead));
+                    blocks.Add(MakeBlock(BlockKind.Heading, CapText(Sanitize(body)), c, fHead));
                     i++;
                 }
                 else if (t.StartsWith("### "))
                 {
-                    blocks.Add(MakeBlock(BlockKind.SubHeading, Sanitize(t.Substring(4)), Color.FromArgb(46, 125, 50), fBold)); // 助手：绿
+                    blocks.Add(MakeBlock(BlockKind.SubHeading, CapText(Sanitize(t.Substring(4))), Color.FromArgb(46, 125, 50), fBold)); // 助手：绿
                     i++;
                 }
                 else if (t.StartsWith("> "))
@@ -611,7 +634,7 @@ namespace DshChatHistoryManage
                         sb.Append(Sanitize(body));
                         i++;
                     }
-                    Block b = MakeBlock(BlockKind.Tool, sb.ToString(), Color.FromArgb(110, 110, 110), fToolDetail);
+                    Block b = MakeBlock(BlockKind.Tool, CapText(sb.ToString()), Color.FromArgb(110, 110, 110), fToolDetail);
                     b.Header = (name ?? "tool") + (status != null ? " — " + status : "");
                     b.Collapsed = true; // 默认折叠，点击展开
                     blocks.Add(b);
@@ -628,9 +651,17 @@ namespace DshChatHistoryManage
                         sb.Append(l2);
                         i++;
                     }
-                    blocks.Add(MakeBlock(BlockKind.Para, Sanitize(sb.ToString()), Color.Black, fBase));
+                    blocks.Add(MakeBlock(BlockKind.Para, CapText(Sanitize(sb.ToString())), Color.Black, fBase));
                 }
             }
+        }
+
+        /// <summary>超长块显示截断（预览封顶；导出文件始终为完整内容）。</summary>
+        private static string CapText(string s)
+        {
+            if (s != null && s.Length > MaxBlockChars)
+                return s.Substring(0, MaxBlockChars) + "\n" + Lang.T("previewTruncated");
+            return s;
         }
 
         private static Block MakeBlock(BlockKind kind, string text, Color color, Font font)
@@ -665,28 +696,91 @@ namespace DshChatHistoryManage
         }
 
         // ---------- 布局 ----------
+        // 测量用 GDI+（MeasureString 对 CJK 换行比 GDI 快 50 倍以上），结果缓存在块上；
+        // 绘制用 GDI（TextRenderer，emoji 经字体链接可渲染真字形）并把块渲染成位图缓存，
+        // 滚动/折叠切换只做位图 blit，避免逐块重复做昂贵的 CJK 换行布局。
         private void Relayout()
         {
             int w = Math.Max(60, ClientSize.Width - PadX * 2);
-            layoutWidth = w;
+            if (Math.Abs(w - layoutWidth) > 6 || blocksDirty) // 宽度变化或新块才重测；折叠切换只重排位置
+            {
+                layoutWidth = w;
+                blocksDirty = false;
+                ClearCaches(); // 宽度变化 → 所有块位图需重渲染
+                using (Graphics g = CreateGraphics())
+                {
+                    foreach (Block b in blocks)
+                    {
+                        if (b.Kind == BlockKind.Tool)
+                        {
+                            b.HeaderHeight = MeasureH(g, (b.Collapsed ? "▶ " : "▼ ") + b.Header, fToolHead, w);
+                            b.DetailHeight = MeasureH(g, b.Text, fToolDetail, w);
+                        }
+                        else
+                        {
+                            b.Height = MeasureH(g, b.Text, b.Font, w);
+                        }
+                    }
+                }
+            }
             int y = 4;
             foreach (Block b in blocks)
             {
                 b.Y = y;
                 if (b.Kind == BlockKind.Tool)
-                {
-                    string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
-                    b.HeaderHeight = TextRenderer.MeasureText(head, fToolHead, new Size(w, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 2;
-                    b.DetailHeight = TextRenderer.MeasureText(b.Text, fToolDetail, new Size(w, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 2;
                     b.Height = b.HeaderHeight + (b.Collapsed ? 0 : b.DetailHeight);
-                }
-                else
-                {
-                    b.Height = TextRenderer.MeasureText(b.Text, b.Font, new Size(w, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 4;
-                }
                 y += b.Height;
             }
             AutoScrollMinSize = new Size(0, y + 8);
+        }
+
+        private static int MeasureH(Graphics g, string text, Font font, int width)
+        {
+            if (string.IsNullOrEmpty(text)) return font.Height + 10;
+            SizeF sz = g.MeasureString(text, font, new SizeF(width, 1000000f));
+            return (int)Math.Ceiling(sz.Height) + 10; // +10 安全边距：GDI+ 测量与 GDI 绘制换行可能有差异
+        }
+
+        // ---------- 块渲染与位图缓存 ----------
+        private Bitmap RenderBlock(Block b, int width)
+        {
+            int h = b.Height + 16;
+            Bitmap bmp = new Bitmap(width, Math.Max(1, h));
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.Clear(BackColor);
+                if (b.Kind == BlockKind.Tool)
+                {
+                    string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
+                    TextRenderer.DrawText(g, head, fToolHead, new Rectangle(0, 0, width, b.HeaderHeight), b.Color,
+                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    if (!b.Collapsed)
+                    {
+                        TextRenderer.DrawText(g, b.Text, fToolDetail, new Rectangle(12, b.HeaderHeight, width - 12, b.DetailHeight + 16), b.Color,
+                            TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    }
+                }
+                else
+                {
+                    TextRenderer.DrawText(g, b.Text, b.Font, new Rectangle(0, 0, width, b.Height + 16), b.Color,
+                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                }
+            }
+            return bmp;
+        }
+
+        private void ClearCaches()
+        {
+            foreach (Block b in blocks)
+            {
+                if (b.Cache != null) { b.Cache.Dispose(); b.Cache = null; }
+            }
+            cacheBytes = 0;
+        }
+
+        private static long BitmapBytes(Bitmap bmp)
+        {
+            return (long)bmp.Width * bmp.Height * 4;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -694,31 +788,24 @@ namespace DshChatHistoryManage
             e.Graphics.Clear(BackColor);
             int scrollY = -AutoScrollPosition.Y;
             int viewH = ClientSize.Height;
+            Graphics g = e.Graphics;
             foreach (Block b in blocks)
             {
                 if (b.Y + b.Height < scrollY) continue;
                 if (b.Y > scrollY + viewH) break;
                 int by = b.Y - scrollY;
-                if (b.Kind == BlockKind.Tool)
+                if (b.Cache == null || b.CacheWidth != layoutWidth)
                 {
-                    string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
-                    Rectangle hr = new Rectangle(PadX, by, layoutWidth, b.HeaderHeight);
-                    TextRenderer.DrawText(e.Graphics, head, fToolHead, hr, b.Color,
-                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-                    if (!b.Collapsed)
-                    {
-                        Rectangle dr = new Rectangle(PadX + 12, by + b.HeaderHeight, layoutWidth - 12, b.DetailHeight);
-                        TextRenderer.DrawText(e.Graphics, b.Text, fToolDetail, dr, b.Color,
-                            TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-                    }
+                    if (b.Cache != null) { cacheBytes -= BitmapBytes(b.Cache); b.Cache.Dispose(); }
+                    b.Cache = RenderBlock(b, layoutWidth);
+                    b.CacheWidth = layoutWidth;
+                    cacheBytes += BitmapBytes(b.Cache);
+                    if (cacheBytes > 64L * 1024 * 1024) ClearCaches(); // 内存保护：超限整体清空重渲染
                 }
-                else
-                {
-                    Rectangle r = new Rectangle(PadX, by, layoutWidth, b.Height);
-                    TextRenderer.DrawText(e.Graphics, b.Text, b.Font, r, b.Color,
-                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-                }
+                g.SetClip(new Rectangle(0, by, ClientSize.Width, b.Height));
+                g.DrawImage(b.Cache, PadX, by);
             }
+            g.ResetClip();
         }
 
         protected override void OnResize(EventArgs e)
@@ -739,12 +826,19 @@ namespace DshChatHistoryManage
                     if (b.Kind == BlockKind.Tool && y < b.Y + b.HeaderHeight)
                     {
                         b.Collapsed = !b.Collapsed; // 点击折叠头展开/收起
+                        if (b.Cache != null) { cacheBytes -= BitmapBytes(b.Cache); b.Cache.Dispose(); b.Cache = null; }
                         Relayout();
                         Invalidate();
                     }
                     return;
                 }
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) ClearCaches();
+            base.Dispose(disposing);
         }
     }
 
