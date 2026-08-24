@@ -279,6 +279,7 @@ namespace DshChatHistoryManage
         {
             StringBuilder sb = new StringBuilder();
             int turn = 0;
+            string model = null; // 最近一次请求的模型（request/header 或 request/context 提供）
             JavaScriptSerializer ser = new JavaScriptSerializer();
             foreach (string line0 in raw.Split('\n'))
             {
@@ -292,7 +293,9 @@ namespace DshChatHistoryManage
                     && line.IndexOf("\"type\":\"tool/call\"", StringComparison.Ordinal) < 0
                     && line.IndexOf("\"type\":\"tool/result\"", StringComparison.Ordinal) < 0
                     && line.IndexOf("\"type\":\"compaction/end\"", StringComparison.Ordinal) < 0
-                    && line.IndexOf("\"type\":\"turn/end\"", StringComparison.Ordinal) < 0)
+                    && line.IndexOf("\"type\":\"turn/end\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"request/header\"", StringComparison.Ordinal) < 0
+                    && line.IndexOf("\"type\":\"request/context\"", StringComparison.Ordinal) < 0)
                     continue;
                 try
                 {
@@ -305,6 +308,17 @@ namespace DshChatHistoryManage
                     if (type == "turn/start")
                     {
                         if (d != null && d.ContainsKey("turn")) turn = Convert.ToInt32(d["turn"]);
+                    }
+                    else if (type == "request/header")
+                    {
+                        // 记录本轮请求使用的模型
+                        Dictionary<string, object> header = (d != null && d.ContainsKey("header") ? d["header"] : null) as Dictionary<string, object>;
+                        Dictionary<string, object> cfg = (header != null && header.ContainsKey("config") ? header["config"] : null) as Dictionary<string, object>;
+                        if (cfg != null && cfg.ContainsKey("model")) model = Convert.ToString(cfg["model"]);
+                    }
+                    else if (type == "request/context")
+                    {
+                        if (d != null && d.ContainsKey("model")) model = Convert.ToString(d["model"]);
                     }
                     else if (type == "user/message")
                     {
@@ -332,7 +346,8 @@ namespace DshChatHistoryManage
                                 }
                         }
                         if (t.Length > 0)
-                            sb.Append("\n### 助手 ").Append(Ts(e)).Append(hasTool ? " [含工具调用]" : "").Append("\n").Append(t);
+                            sb.Append("\n### ").Append(string.IsNullOrEmpty(model) ? "助手" : model).Append(" ").Append(Ts(e))
+                              .Append(hasTool ? " [含工具调用]" : "").Append("\n").Append(t);
                     }
                     else if (type == "tool/call")
                     {

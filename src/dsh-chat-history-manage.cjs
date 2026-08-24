@@ -231,6 +231,7 @@ function readSession(file) {
 function buildTranscript(raw) {
   const out = [];
   let turn = 0;
+  let model = null; // 最近一次请求的模型（request/header 或 request/context 提供）
   const ts = (t) => new Date(t).toISOString().replace('T', ' ').slice(0, 19);
   const trunc = (s, n) => (s == null ? '' : String(s)).length > n ? String(s).slice(0, n) + '…' : String(s);
   const textOf = (blocks) => (blocks || []).filter(b => b.type === 'text' && b.text).map(b => b.text).join('\n');
@@ -240,6 +241,15 @@ function buildTranscript(raw) {
     let e; try { e = JSON.parse(line); } catch { continue; }
     const d = e.data || {};
     if (e.type === 'turn/start') { turn = d.turn; continue; }
+    if (e.type === 'request/header') {
+      const cfg = d.header && d.header.config;
+      if (cfg && cfg.model) model = cfg.model;
+      continue;
+    }
+    if (e.type === 'request/context') {
+      if (d.model) model = d.model;
+      continue;
+    }
     if (e.type === 'user/message') {
       if (d.source && d.source.kind === 'plugin') continue;
       const t = textOf(d.content).trim();
@@ -247,7 +257,7 @@ function buildTranscript(raw) {
     } else if (e.type === 'assistant/message') {
       const t = textOf(d.message && d.message.content).trim();
       const hasTool = (d.message && d.message.content || []).some(b => b.type === 'tool-call');
-      if (t) out.push(`\n### 助手 ${ts(e.time)}${hasTool ? ' [含工具调用]' : ''}\n${t}`);
+      if (t) out.push(`\n### ${model || '助手'} ${ts(e.time)}${hasTool ? ' [含工具调用]' : ''}\n${t}`);
     } else if (e.type === 'tool/call') {
       out.push(`\n> 🔧 ${d.name} ${trunc(JSON.stringify(d.arguments), 200)}`);
     } else if (e.type === 'tool/result') {
