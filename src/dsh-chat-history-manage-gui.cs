@@ -1221,6 +1221,70 @@ namespace DshChatHistoryManage
         }
     }
 
+    /// <summary>自绘圆角输入框（白底 + 浅灰圆角边框，内部普通文本框）。</summary>
+    class RoundedTextBox : UserControl
+    {
+        private TextBox inner;
+
+        public override string Text
+        {
+            get { return inner.Text; }
+            set { inner.Text = value ?? ""; }
+        }
+
+        public RoundedTextBox()
+        {
+            DoubleBuffered = true;
+            SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.UserPaint, true);
+            BackColor = Color.Transparent; // 圆角外透出容器背景
+            inner = new TextBox();
+            inner.BorderStyle = BorderStyle.None;
+            inner.BackColor = Color.White;
+            inner.ForeColor = UiTheme.Text;
+            inner.Font = new Font("Microsoft YaHei UI", 9.5f);
+            Controls.Add(inner);
+            LayoutInner();
+        }
+
+        protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutInner(); }
+        protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); LayoutInner(); }
+
+        private void LayoutInner()
+        {
+            inner.Height = Math.Max(16, ClientSize.Height - 8);
+            inner.Width = Math.Max(20, ClientSize.Width - 26);
+            inner.Top = Math.Max(0, (ClientSize.Height - inner.Height) / 2);
+            inner.Left = 13;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle rc = ClientRectangle;
+            rc.Inflate(-1, -1);
+            int r = Math.Min(12, rc.Height / 2); // 圆角
+            using (GraphicsPath path = RoundedRectPath(rc, r))
+            {
+                using (SolidBrush br = new SolidBrush(Color.White))
+                    e.Graphics.FillPath(br, path);
+                using (Pen pen = new Pen(UiTheme.Border))
+                    e.Graphics.DrawPath(pen, path);
+            }
+        }
+
+        private static GraphicsPath RoundedRectPath(Rectangle rc, int r)
+        {
+            GraphicsPath p = new GraphicsPath();
+            int d = r * 2;
+            p.AddArc(rc.X, rc.Y, d, d, 180, 90);
+            p.AddArc(rc.Right - d, rc.Y, d, d, 270, 90);
+            p.AddArc(rc.Right - d, rc.Bottom - d, d, d, 0, 90);
+            p.AddArc(rc.X, rc.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+    }
+
     // ---------- 关于对话框 ----------
     class AboutForm : Form
     {
@@ -1305,7 +1369,7 @@ namespace DshChatHistoryManage
     class MainForm : Form
     {
         private ListView list;
-        private TextBox dirBox;
+        private RoundedTextBox dirBox;
         private Button btnBrowse, btnOpenDir, btnRefresh, btnPick, btnExport;
         private PreviewView preview;
         private SplitContainer split; // 左列表 / 右预览分割（左宽随列宽自适应）
@@ -1469,10 +1533,8 @@ namespace DshChatHistoryManage
             lb.AutoSize = true;
             lb.Anchor = AnchorStyles.Left;
             lbDir = lb;
-            dirBox = new TextBox();
+            dirBox = new RoundedTextBox(); // 圆角输入栏
             dirBox.Dock = DockStyle.Fill;
-            dirBox.BackColor = UiTheme.Panel;
-            dirBox.ForeColor = UiTheme.Text;
             btnBrowse = MkButton(Lang.T("browse"), 84, false, true);      // 目录按钮：胶囊形
             btnOpenDir = MkButton(Lang.T("openDir"), 92, false, true);    // 目录按钮：胶囊形
             dirRow.Controls.Add(lb, 0, 0);
