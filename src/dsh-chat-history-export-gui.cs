@@ -405,72 +405,6 @@ namespace DshChatHistoryExport
             try { return new JavaScriptSerializer().Serialize(o); }
             catch { return Convert.ToString(o); }
         }
-
-        // ---------- 预览渲染：把转录 Markdown 转成带格式的 RTF（标题着色加粗、工具调用等宽灰字缩进） ----------
-        public static string BuildPreviewRtf(string md)
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.Append(@"{\rtf1\ansi\deff0");
-            sb.Append(@"{\fonttbl{\f0 Microsoft YaHei UI;}{\f1 Consolas;}}");
-            sb.Append(@"{\colortbl ;\red31\green78\blue121;\red46\green125\blue50;\red128\green128\blue128;\red192\green0\blue0;\red178\green107\blue0;}");
-            sb.Append(@"\viewkind4\uc1\pard\f0\fs19 ");
-            bool first = true;
-            foreach (string rawLine in md.Split('\n'))
-            {
-                string line = rawLine.TrimEnd('\r');
-                if (line.Length == 0)
-                {
-                    if (!first) sb.Append(@"\par ");
-                    continue;
-                }
-                if (line.StartsWith("## "))
-                {
-                    string body = line.Substring(3);
-                    string color = @"\cf1 ";
-                    if (body.StartsWith("⏳")) color = @"\cf5 ";
-                    else if (body.StartsWith("❌")) color = @"\cf4 ";
-                    sb.Append(@"\par \b\fs22 ").Append(color).Append(RtfEscape(body)).Append(@"\b0\fs19\par ");
-                }
-                else if (line.StartsWith("### "))
-                {
-                    sb.Append(@"\par \b\fs22\cf2 ").Append(RtfEscape(line.Substring(4))).Append(@"\b0\fs19\par ");
-                }
-                else if (line.StartsWith("> "))
-                {
-                    string body = line.Substring(2).TrimStart();
-                    string label = "";
-                    if (body.StartsWith("🔧")) { label = "TOOL  "; body = body.Substring(2).TrimStart(); }
-                    else if (body.StartsWith("📦")) { label = "RESULT  "; body = body.Substring(2).TrimStart(); }
-                    sb.Append(@"\par \f1\fs16\li720\cf3 ").Append(RtfEscape(label + body)).Append(@"\f0\fs19\li0\par ");
-                }
-                else
-                {
-                    sb.Append(RtfEscape(line)).Append(@"\par ");
-                }
-                first = false;
-            }
-            sb.Append("}");
-            return sb.ToString();
-        }
-
-        /// <summary>RTF 转义：\ { } 转义、\n 转 \par；CJK 用 \uN?；代理对（emoji）降级为 ?。</summary>
-        private static string RtfEscape(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            StringBuilder sb = new StringBuilder(s.Length * 2);
-            for (int i = 0; i < s.Length; i++)
-            {
-                char c = s[i];
-                if (c == '\\') sb.Append(@"\\");
-                else if (c == '{') sb.Append(@"\{");
-                else if (c == '}') sb.Append(@"\}");
-                else if (c == '\n') sb.Append(@"\par ");
-                else if (c < 128) sb.Append(c);
-                else if (char.IsHighSurrogate(c) || char.IsLowSurrogate(c)) sb.Append('?'); // emoji 等无法用 \uN 表示
-                else sb.Append(@"\u").Append((short)c).Append('?');
-            }
-            return sb.ToString();
-        }
     }
 
     // ---------- 界面语言（中文 / English） ----------
@@ -510,6 +444,7 @@ namespace DshChatHistoryExport
             { "statusFiltered", "（已剔除 {0} 个空白会话：无主题且无聊天内容）" },
             { "statusSelected", "已选择: " },
             { "statusGenerated", "已生成: " },
+            { "statusCopied", "已复制到剪贴板" },
             { "msgInfo", "提示" },
             { "msgError", "错误" },
             { "msgExportDone", "导出完成" },
@@ -556,6 +491,7 @@ namespace DshChatHistoryExport
             { "statusFiltered", " ({0} blank session(s) filtered: no topic and no chat content)" },
             { "statusSelected", "Selected: " },
             { "statusGenerated", "Generated: " },
+            { "statusCopied", "Copied to clipboard" },
             { "msgInfo", "Info" },
             { "msgError", "Error" },
             { "msgExportDone", "Export complete" },
@@ -578,6 +514,247 @@ namespace DshChatHistoryExport
         }
     }
 
+    // ---------- 预览控件：自绘视图，工具调用块可点击折叠/展开，字体 Times New Roman ----------
+    class PreviewView : ScrollableControl
+    {
+        private enum BlockKind { Heading, SubHeading, Para, Tool }
+
+        private class Block
+        {
+            public BlockKind Kind;
+            public string Text;    // 要绘制的文本（已清洗，无 emoji）
+            public string Header;  // 工具块的折叠头（无箭头，如 "pwsh — OK"）
+            public bool Collapsed; // 工具块是否折叠
+            public Font Font;
+            public Color Color;
+            public int Y;
+            public int Height;
+            public int HeaderHeight; // 工具块头部行高（可点击区域）
+            public int DetailHeight; // 工具块细节行高（展开时显示）
+        }
+
+        private List<Block> blocks = new List<Block>();
+        private string fullText = ""; // 完整转录（供复制）
+        private int layoutWidth = -1;
+        private const int PadX = 10;
+        private Font fBase, fBold, fHead, fToolHead, fToolDetail;
+
+        public PreviewView()
+        {
+            BackColor = Color.White;
+            AutoScroll = true;
+            DoubleBuffered = true;
+            fBase = new Font("Times New Roman", 9.5f);
+            fBold = new Font("Times New Roman", 9.5f, FontStyle.Bold);
+            fHead = new Font("Times New Roman", 11f, FontStyle.Bold);
+            fToolHead = new Font("Times New Roman", 9f, FontStyle.Italic);
+            fToolDetail = new Font("Times New Roman", 8.5f);
+        }
+
+        /// <summary>displayMd 用于显示（可能截断），fullMd 是完整转录（供复制）。</summary>
+        public void SetContent(string displayMd, string fullMd)
+        {
+            fullText = fullMd ?? displayMd;
+            blocks.Clear();
+            layoutWidth = -1;
+            BuildBlocks(displayMd ?? "");
+            Relayout();
+            AutoScrollPosition = new Point(0, 0);
+            Invalidate();
+        }
+
+        /// <summary>把完整转录复制到剪贴板。</summary>
+        public void CopyFull()
+        {
+            try { Clipboard.SetText(fullText); } catch { }
+        }
+
+        public string FullText { get { return fullText; } }
+
+        // ---------- 解析转录为块 ----------
+        private void BuildBlocks(string md)
+        {
+            string[] lines = md.Split('\n');
+            int i = 0;
+            while (i < lines.Length)
+            {
+                string t = lines[i].Trim();
+                if (t.Length == 0) { i++; continue; }
+                if (t.StartsWith("## "))
+                {
+                    string body = t.Substring(3);
+                    Color c = Color.FromArgb(31, 78, 121); // 用户轮次：蓝
+                    if (body.StartsWith("⏳")) c = Color.FromArgb(178, 107, 0); // 压缩：橙
+                    else if (body.StartsWith("❌")) c = Color.FromArgb(192, 0, 0); // 错误：红
+                    blocks.Add(MakeBlock(BlockKind.Heading, Sanitize(body), c, fHead));
+                    i++;
+                }
+                else if (t.StartsWith("### "))
+                {
+                    blocks.Add(MakeBlock(BlockKind.SubHeading, Sanitize(t.Substring(4)), Color.FromArgb(46, 125, 50), fBold)); // 助手：绿
+                    i++;
+                }
+                else if (t.StartsWith("> "))
+                {
+                    // 连续工具行归为一个可折叠块
+                    StringBuilder sb = new StringBuilder();
+                    string name = null;
+                    string status = null;
+                    while (i < lines.Length)
+                    {
+                        string l2 = lines[i].Trim();
+                        if (!l2.StartsWith("> ")) break;
+                        string body = l2.Substring(2).TrimStart();
+                        if (body.StartsWith("🔧")) { body = "TOOL " + body.Substring(2).TrimStart(); if (name == null) name = FirstToken(body, "TOOL "); }
+                        else if (body.StartsWith("📦")) { body = "RESULT " + body.Substring(2).TrimStart(); if (status == null) status = body.StartsWith("RESULT OK") ? "OK" : "ERROR"; }
+                        if (sb.Length > 0) sb.Append('\n');
+                        sb.Append(Sanitize(body));
+                        i++;
+                    }
+                    Block b = MakeBlock(BlockKind.Tool, sb.ToString(), Color.FromArgb(110, 110, 110), fToolDetail);
+                    b.Header = (name ?? "tool") + (status != null ? " — " + status : "");
+                    b.Collapsed = true; // 默认折叠，点击展开
+                    blocks.Add(b);
+                }
+                else
+                {
+                    // 连续普通行合并为一个段落
+                    StringBuilder sb = new StringBuilder();
+                    while (i < lines.Length)
+                    {
+                        string l2 = lines[i].Trim();
+                        if (l2.Length == 0 || l2.StartsWith("## ") || l2.StartsWith("### ") || l2.StartsWith("> ")) break;
+                        if (sb.Length > 0) sb.Append('\n');
+                        sb.Append(l2);
+                        i++;
+                    }
+                    blocks.Add(MakeBlock(BlockKind.Para, Sanitize(sb.ToString()), Color.Black, fBase));
+                }
+            }
+        }
+
+        private static Block MakeBlock(BlockKind kind, string text, Color color, Font font)
+        {
+            Block b = new Block();
+            b.Kind = kind;
+            b.Text = text;
+            b.Color = color;
+            b.Font = font;
+            return b;
+        }
+
+        private static string FirstToken(string s, string prefix)
+        {
+            string r = s.Substring(prefix.Length).TrimStart();
+            int end = r.IndexOfAny(new char[] { ' ', '{', '\n' });
+            return end < 0 ? r : r.Substring(0, end);
+        }
+
+        /// <summary>清洗：emoji（代理对）降级为 ?，控制字符去除。</summary>
+        private static string Sanitize(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (char.IsHighSurrogate(c))
+                {
+                    if (i + 1 < s.Length && char.IsLowSurrogate(s[i + 1])) i++;
+                    sb.Append('?');
+                    continue;
+                }
+                if (char.IsLowSurrogate(c)) { sb.Append('?'); continue; }
+                if (c < 32 && c != '\t' && c != '\n') continue;
+                sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        // ---------- 布局 ----------
+        private void Relayout()
+        {
+            int w = Math.Max(60, ClientSize.Width - PadX * 2);
+            layoutWidth = w;
+            int y = 4;
+            foreach (Block b in blocks)
+            {
+                b.Y = y;
+                if (b.Kind == BlockKind.Tool)
+                {
+                    string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
+                    b.HeaderHeight = TextRenderer.MeasureText(head, fToolHead, new Size(w, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 2;
+                    b.DetailHeight = TextRenderer.MeasureText(b.Text, fToolDetail, new Size(w, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 2;
+                    b.Height = b.HeaderHeight + (b.Collapsed ? 0 : b.DetailHeight);
+                }
+                else
+                {
+                    b.Height = TextRenderer.MeasureText(b.Text, b.Font, new Size(w, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.NoPadding).Height + 4;
+                }
+                y += b.Height;
+            }
+            AutoScrollMinSize = new Size(0, y + 8);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.Clear(BackColor);
+            int scrollY = -AutoScrollPosition.Y;
+            int viewH = ClientSize.Height;
+            foreach (Block b in blocks)
+            {
+                if (b.Y + b.Height < scrollY) continue;
+                if (b.Y > scrollY + viewH) break;
+                int by = b.Y - scrollY;
+                if (b.Kind == BlockKind.Tool)
+                {
+                    string head = (b.Collapsed ? "▶ " : "▼ ") + b.Header;
+                    Rectangle hr = new Rectangle(PadX, by, layoutWidth, b.HeaderHeight);
+                    TextRenderer.DrawText(e.Graphics, head, fToolHead, hr, b.Color,
+                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    if (!b.Collapsed)
+                    {
+                        Rectangle dr = new Rectangle(PadX + 12, by + b.HeaderHeight, layoutWidth - 12, b.DetailHeight);
+                        TextRenderer.DrawText(e.Graphics, b.Text, fToolDetail, dr, b.Color,
+                            TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                    }
+                }
+                else
+                {
+                    Rectangle r = new Rectangle(PadX, by, layoutWidth, b.Height);
+                    TextRenderer.DrawText(e.Graphics, b.Text, b.Font, r, b.Color,
+                        TextFormatFlags.WordBreak | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
+                }
+            }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (blocks.Count > 0) { Relayout(); Invalidate(); }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left) return;
+            int y = e.Y - AutoScrollPosition.Y;
+            foreach (Block b in blocks)
+            {
+                if (y >= b.Y && y < b.Y + b.Height)
+                {
+                    if (b.Kind == BlockKind.Tool && y < b.Y + b.HeaderHeight)
+                    {
+                        b.Collapsed = !b.Collapsed; // 点击折叠头展开/收起
+                        Relayout();
+                        Invalidate();
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     // ---------- 主窗口 ----------
     class SessionInfo
     {
@@ -593,7 +770,7 @@ namespace DshChatHistoryExport
         private ListView list;
         private TextBox dirBox;
         private Button btnBrowse, btnOpenDir, btnRefresh, btnPick, btnExport;
-        private RichTextBox preview;
+        private PreviewView preview;
         private StatusStrip status;
         private ToolStripStatusLabel statusLabel;
         private List<SessionInfo> sessions = new List<SessionInfo>();
@@ -603,7 +780,7 @@ namespace DshChatHistoryExport
         private MenuStrip menu;
         private ToolStripMenuItem mFile, mEdit, mLang;
         private ToolStripMenuItem filePick, fileRefresh, fileExport, fileExit;
-        private ToolStripMenuItem editCopy, editSelectAll, editClearCache;
+        private ToolStripMenuItem editCopy, editClearCache;
         private ToolStripMenuItem langZhItem, langEnItem;
         // 主题缓存条目：修改时间（Unix 毫秒）+ 文件大小，两者都匹配才复用，避免文件被改写后误用旧主题
         private class TitleCacheEntry
@@ -763,12 +940,8 @@ namespace DshChatHistoryExport
             list.Columns.Add(Lang.T("colTime"), 110);
             split.Panel1.Controls.Add(list);
 
-            preview = new RichTextBox();
+            preview = new PreviewView();
             preview.Dock = DockStyle.Fill;
-            preview.ReadOnly = true;
-            preview.BorderStyle = BorderStyle.FixedSingle;
-            preview.BackColor = Color.White;
-            preview.Font = new Font("Microsoft YaHei UI", 9.5f);
             split.Panel2.Controls.Add(preview);
 
             root.Controls.Add(split, 0, 3);
@@ -820,13 +993,10 @@ namespace DshChatHistoryExport
             mFile.DropDownItems.Add(fileExit);
 
             mEdit = new ToolStripMenuItem(Lang.T("menuEdit"));
-            editCopy = new ToolStripMenuItem(Lang.T("editCopy"), null, delegate { try { preview.Copy(); } catch { } });
+            editCopy = new ToolStripMenuItem(Lang.T("editCopy"), null, delegate { CopyTranscript(); });
             editCopy.ShortcutKeys = Keys.Control | Keys.C;
-            editSelectAll = new ToolStripMenuItem(Lang.T("editSelectAll"), null, delegate { preview.SelectAll(); });
-            editSelectAll.ShortcutKeys = Keys.Control | Keys.A;
             editClearCache = new ToolStripMenuItem(Lang.T("editClearCache"), null, delegate { ClearTitleCache(); });
             mEdit.DropDownItems.Add(editCopy);
-            mEdit.DropDownItems.Add(editSelectAll);
             mEdit.DropDownItems.Add(new ToolStripSeparator());
             mEdit.DropDownItems.Add(editClearCache);
 
@@ -869,7 +1039,6 @@ namespace DshChatHistoryExport
             fileExit.Text = Lang.T("fileExit");
             mEdit.Text = Lang.T("menuEdit");
             editCopy.Text = Lang.T("editCopy");
-            editSelectAll.Text = Lang.T("editSelectAll");
             editClearCache.Text = Lang.T("editClearCache");
             mLang.Text = Lang.T("menuLang");
             langZhItem.Text = Lang.T("langZh");
@@ -887,6 +1056,18 @@ namespace DshChatHistoryExport
             try { File.Delete(CachePath); } catch { }
             statusLabel.Text = Lang.T("statusReady");
             LoadSessions();
+        }
+
+        /// <summary>复制完整转录到剪贴板。</summary>
+        private void CopyTranscript()
+        {
+            try
+            {
+                if (preview.FullText.Length == 0) return;
+                Clipboard.SetText(preview.FullText);
+                statusLabel.Text = Lang.T("statusCopied");
+            }
+            catch { }
         }
 
         private static Button MkButton(string text, int width)
@@ -1120,18 +1301,10 @@ namespace DshChatHistoryExport
 
         private void SetPreview(string md)
         {
+            string full = md;
             if (md.Length > 600000)
                 md = md.Substring(0, 600000) + "\n\n" + Lang.T("previewTruncated");
-            try
-            {
-                preview.Rtf = SessionReader.BuildPreviewRtf(md); // 渲染为带格式的 RTF
-            }
-            catch
-            {
-                preview.Text = md; // RTF 失败回退纯文本
-            }
-            preview.SelectionStart = 0;
-            preview.ScrollToCaret();
+            preview.SetContent(md, full);
         }
 
         private void PickFile()
