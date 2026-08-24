@@ -89,13 +89,38 @@ namespace DshChatHistoryExport
         internal static extern unsafe ulong ZSTD_findFrameCompressedSize(byte* src, ulong srcSize);
 
         [DllImport("libzstd.dll", CallingConvention = CallingConvention.Cdecl)]
-        internal static extern unsafe ulong ZSTD_decompressBound(byte* src, ulong srcSize);
+        internal static extern unsafe ulong ZSTD_findDecompressedSize(byte* src, ulong srcSize);
 
         [DllImport("libzstd.dll", CallingConvention = CallingConvention.Cdecl)]
-        internal static extern unsafe ulong ZSTD_decompress(byte* dst, ulong dstCapacity, byte* src, ulong compressedSize);
+        internal static extern unsafe uint ZSTD_isError(ulong code);
 
         [DllImport("libzstd.dll", CallingConvention = CallingConvention.Cdecl)]
-        internal static extern uint ZSTD_isError(ulong code);
+        internal static extern unsafe void* ZSTD_createDStream();
+
+        [DllImport("libzstd.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern unsafe void ZSTD_freeDStream(void* zds);
+
+        [DllImport("libzstd.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern unsafe ulong ZSTD_initDStream(void* zds);
+
+        [DllImport("libzstd.dll", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern unsafe ulong ZSTD_decompressStream(void* zds, ZSTD_outBuffer* output, ZSTD_inBuffer* input);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct ZSTD_inBuffer
+        {
+            public byte* src;
+            public ulong size;
+            public ulong pos;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal unsafe struct ZSTD_outBuffer
+        {
+            public byte* dst;
+            public ulong size;
+            public ulong pos;
+        }
 
         internal static void EnsureDll()
         {
@@ -111,6 +136,70 @@ namespace DshChatHistoryExport
             }
             SetDllDirectory(dir);
         }
+
+        /// <summary>
+        /// 流式解压：一次过完文件里拼接的全部 zstd 帧。
+        /// 相比逐帧 P/Invoke（大文件有数万帧，开销巨大），单趟流式解压快一到两个数量级。
+        /// </summary>
+        internal static unsafe byte[] DecompressAll(byte[] src)
+        {
+            void* ds = ZSTD_createDStream();
+            if (ds == null) throw new InvalidDataException("zstd: ZSTD_createDStream 失败");
+            try
+            {
+                fixed (byte* p = src)
+                {
+                    ZSTD_initDStream(ds);
+                    // 多帧拼接时返回总解压大小；未知/出错时走动态扩容兜底
+                    ulong total = ZSTD_findDecompressedSize(p, (ulong)src.Length);
+                    ulong cap = (Zstd.ZSTD_isError(total) != 0 || total == 0)
+                        ? (ulong)src.Length * 16 + 4096
+                        : total;
+                    byte[] dst = new byte[cap];
+                    fixed (byte* d = dst)
+                    {
+                        ZSTD_inBuffer inb = new ZSTD_inBuffer();
+                        inb.src = p;
+                        inb.size = (ulong)src.Length;
+                        inb.pos = 0;
+                        ZSTD_outBuffer outb = new ZSTD_outBuffer();
+                        outb.dst = d;
+                        outb.size = cap;
+                        outb.pos = 0;
+                        while (inb.pos < inb.size)
+                        {
+                            if (outb.pos == outb.size)
+                            {
+                                // 输出缓冲满（总量未知时），扩容后继续
+                                ulong newCap = cap * 2;
+                                byte[] big = new byte[newCap];
+                                Array.Copy(dst, big, (long)outb.pos);
+                                dst = big;
+                                cap = newCap;
+                                fixed (byte* d2 = dst)
+                                {
+                                    outb.dst = d2;
+                                    ulong r2 = ZSTD_decompressStream(ds, &outb, &inb);
+                                    if (ZSTD_isError(r2) != 0)
+                                        throw new InvalidDataException("zstd 解压失败 (error " + r2 + ")");
+                                }
+                                continue;
+                            }
+                            ulong r = ZSTD_decompressStream(ds, &outb, &inb);
+                            if (ZSTD_isError(r) != 0)
+                                throw new InvalidDataException("zstd 解压失败 (error " + r + ")");
+                        }
+                        byte[] res = new byte[outb.pos];
+                        Array.Copy(dst, res, (long)outb.pos);
+                        return res;
+                    }
+                }
+            }
+            finally
+            {
+                ZSTD_freeDStream(ds);
+            }
+        }
     }
 
     // ---------- 会话读取与转录 ----------
@@ -122,47 +211,43 @@ namespace DshChatHistoryExport
             if (data.Length < 4 || BitConverter.ToUInt32(data, 0) != 0xfd2fb528)
                 return Encoding.UTF8.GetString(data); // 未压缩的 JSONL
             Zstd.EnsureDll();
-            StringBuilder sb = new StringBuilder();
-            int off = 0;
-            while (off < data.Length)
-            {
-                ulong frameSize;
-                unsafe
-                {
-                    fixed (byte* p = data)
-                    {
-                        frameSize = Zstd.ZSTD_findFrameCompressedSize(p + off, (ulong)(data.Length - off));
-                    }
-                }
-                if (Zstd.ZSTD_isError(frameSize) != 0) break; // 尾部非 zstd 数据，忽略
-                byte[] frame = DecompressFrame(data, off, (int)frameSize);
-                sb.Append(Encoding.UTF8.GetString(frame));
-                off += (int)frameSize;
-            }
-            return sb.ToString();
+            return Encoding.UTF8.GetString(Zstd.DecompressAll(data));
         }
 
-        private static unsafe byte[] DecompressFrame(byte[] src, int off, int len)
+        /// <summary>
+        /// 取会话主题：最后一个 session/title 事件的 data.title（与 DSH 侧边栏一致，last-wins）。
+        /// 找不到返回 null。只解析包含 "session/title" 的行，避免整份大文本全量 JSON 解析。
+        /// </summary>
+        public static string GetTitle(string raw)
         {
-            ulong n = 0;
-            byte[] dst;
-            fixed (byte* p = src)
+            if (string.IsNullOrEmpty(raw)) return null;
+            string title = null;
+            JavaScriptSerializer ser = new JavaScriptSerializer();
+            int idx = 0;
+            while ((idx = raw.IndexOf("session/title", idx, StringComparison.Ordinal)) >= 0)
             {
-                byte* s = p + off;
-                ulong bound = Zstd.ZSTD_decompressBound(s, (ulong)len);
-                if (Zstd.ZSTD_isError(bound) != 0) bound = (ulong)len * 4 + 4096;
-                dst = new byte[bound];
-                fixed (byte* d = dst)
+                int ls = raw.LastIndexOf('\n', idx) + 1;
+                int le = raw.IndexOf('\n', idx);
+                if (le < 0) le = raw.Length;
+                string line = raw.Substring(ls, le - ls).Trim();
+                idx += "session/title".Length;
+                if (line.Length == 0) continue;
+                try
                 {
-                    n = Zstd.ZSTD_decompress(d, bound, s, (ulong)len);
+                    Dictionary<string, object> e = ser.DeserializeObject(line) as Dictionary<string, object>;
+                    if (e == null) continue;
+                    string t0 = e.ContainsKey("type") ? e["type"] as string : null;
+                    if (t0 == null || !"session/title".Equals(t0)) continue;
+                    Dictionary<string, object> d = (e.ContainsKey("data") ? e["data"] : null) as Dictionary<string, object>;
+                    if (d != null && d.ContainsKey("title"))
+                    {
+                        string t = Convert.ToString(d["title"]);
+                        if (t != null && t.Length > 0) title = t; // last wins
+                    }
                 }
-                if (Zstd.ZSTD_isError(n) != 0)
-                    throw new InvalidDataException("zstd 解压失败 (error " + n + ")");
-                if (n == bound) return dst;
+                catch { }
             }
-            byte[] res = new byte[n];
-            Array.Copy(dst, res, (long)n);
-            return res;
+            return title;
         }
 
         public static string BuildTranscript(string raw)
@@ -303,6 +388,7 @@ namespace DshChatHistoryExport
         public string Id;
         public string File;
         public DateTime Time;
+        public string Title; // 主题（最后一条 session/title）
         public string Transcript; // 缓存
     }
 
@@ -316,6 +402,8 @@ namespace DshChatHistoryExport
         private ToolStripStatusLabel statusLabel;
         private List<SessionInfo> sessions = new List<SessionInfo>();
         private string pickedFile;
+        // 主题缓存：文件路径 -> (修改时间, 主题)。mtime 未变则直接复用，刷新列表不重复解压
+        private Dictionary<string, KeyValuePair<DateTime, string>> titleCache = new Dictionary<string, KeyValuePair<DateTime, string>>();
 
         private string ConfigPath
         {
@@ -384,15 +472,16 @@ namespace DshChatHistoryExport
 
             SplitContainer split = new SplitContainer();
             split.Dock = DockStyle.Fill;
-            split.SplitterDistance = 360;
-            split.Panel1MinSize = 280;
+            split.SplitterDistance = 460;
+            split.Panel1MinSize = 340;
 
             list = new ListView();
             list.Dock = DockStyle.Fill;
             list.View = View.Details;
             list.FullRowSelect = true;
             list.HideSelection = false;
-            list.Columns.Add("会话 ID", 250);
+            list.Columns.Add("主题", 190);
+            list.Columns.Add("会话 ID", 200);
             list.Columns.Add("时间", 110);
             split.Panel1.Controls.Add(list);
 
@@ -479,16 +568,63 @@ namespace DshChatHistoryExport
                 }
             }
             sessions.Sort(delegate (SessionInfo a, SessionInfo b) { return b.Time.CompareTo(a.Time); });
+            List<KeyValuePair<SessionInfo, ListViewItem>> pending = new List<KeyValuePair<SessionInfo, ListViewItem>>();
             foreach (SessionInfo si in sessions)
             {
-                ListViewItem it = new ListViewItem(si.Id);
+                string topic = null;
+                lock (titleCache)
+                {
+                    KeyValuePair<DateTime, string> c;
+                    if (titleCache.TryGetValue(si.File, out c) && c.Key == si.Time) topic = c.Value;
+                }
+                ListViewItem it = new ListViewItem(topic ?? "");
+                it.SubItems.Add(si.Id);
                 it.SubItems.Add(si.Time.ToString("yyyy-MM-dd HH:mm"));
                 it.Tag = si;
                 list.Items.Add(it);
+                if (topic == null) pending.Add(new KeyValuePair<SessionInfo, ListViewItem>(si, it));
             }
             list.EndUpdate();
             statusLabel.Text = "已加载 " + sessions.Count + " 个会话"
-                + (sessions.Count == 0 ? "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" : "");
+                + (sessions.Count == 0 ? "（未找到 ~/.dsh/sessions，可点“选择会话文件…”手动挑选）" : "")
+                + (pending.Count > 0 ? "，正在读取主题…" : "");
+            if (pending.Count > 0) ScanTitles(pending);
+        }
+
+        /// <summary>后台逐个读取会话主题（解压 + 取最后一条 session/title），进度实时填回列表。</summary>
+        private void ScanTitles(List<KeyValuePair<SessionInfo, ListViewItem>> pending)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                foreach (KeyValuePair<SessionInfo, ListViewItem> pair in pending)
+                {
+                    SessionInfo si = pair.Key;
+                    ListViewItem it = pair.Value;
+                    string topic = null;
+                    try
+                    {
+                        DateTime mt = File.GetLastWriteTime(si.File);
+                        lock (titleCache)
+                        {
+                            KeyValuePair<DateTime, string> c;
+                            if (titleCache.TryGetValue(si.File, out c) && c.Key == mt) topic = c.Value;
+                        }
+                        if (topic == null)
+                        {
+                            string raw = SessionReader.ReadSession(si.File);
+                            topic = SessionReader.GetTitle(raw) ?? "";
+                            lock (titleCache) titleCache[si.File] = new KeyValuePair<DateTime, string>(mt, topic);
+                        }
+                        si.Title = topic;
+                        if (IsDisposed) return;
+                        BeginInvoke((Action)delegate
+                        {
+                            if (it.Tag == si && it.SubItems.Count > 0) it.SubItems[0].Text = topic;
+                        });
+                    }
+                    catch { }
+                }
+            });
         }
 
         private void OnSelect()

@@ -69,6 +69,37 @@ function findSessionFile(input) {
   return hits[0];
 }
 
+// ---------- 会话主题 ----------
+// 取最后一条 session/title 事件的 data.title（与 DSH 侧边栏一致，last-wins）。
+function getTitle(raw) {
+  let title = null;
+  for (const line of raw.split('\n')) {
+    if (line.indexOf('session/title') < 0) continue;
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    if (e.type === 'session/title' && e.data && typeof e.data.title === 'string' && e.data.title) title = e.data.title;
+  }
+  return title;
+}
+
+// 会话主题：优先只解压最后一个 zstd 帧（主题事件总在文件尾部附近），找不到再全量解压兜底。
+function sessionTitleOf(file) {
+  const buf = fs.readFileSync(file);
+  if (buf.length > 4 && buf.readUInt32LE(0) === 0xfd2fb528) {
+    // 从尾部往前找最后一个帧起始魔数；帧内巧合命中会解压失败，随即全量兜底
+    for (let i = buf.length - 4; i >= 0; i--) {
+      if (buf.readUInt32LE(i) === 0xfd2fb528) {
+        try {
+          const t = getTitle(zstdDecompressSync(buf.subarray(i)).toString('utf8'));
+          if (t) return t;
+        } catch { }
+        break;
+      }
+    }
+    return getTitle(readSession(file));
+  }
+  return getTitle(buf.toString('utf8'));
+}
+
 // ---------- 列出所有已保存会话 ----------
 function listSessions() {
   const root = path.join(os.homedir(), '.dsh', 'sessions');
@@ -88,6 +119,10 @@ function listSessions() {
     }
   })(root);
   out.sort((a, b) => fs.statSync(b.file).mtimeMs - fs.statSync(a.file).mtimeMs);
+  console.log('正在读取会话主题…');
+  for (const s of out) {
+    try { s.title = sessionTitleOf(s.file); } catch { s.title = null; }
+  }
   return out;
 }
 
@@ -228,7 +263,7 @@ function run(input, outArg) {
     if (!sessions.length) { console.log('未找到任何已保存会话'); process.exit(0); }
     sessions.forEach((s, i) => {
       const when = new Date(fs.statSync(s.file).mtime).toISOString().replace('T', ' ').slice(0, 16);
-      console.log(`${String(i + 1).padStart(2)}) ${s.id}  (${when})`);
+      console.log(`${String(i + 1).padStart(2)}) ${s.title ? s.title + ' | ' : ''}${s.id}  (${when})`);
     });
     const idx = parseInt(await ask('选择序号: '), 10);
     if (!idx || idx < 1 || idx > sessions.length) { console.log('无效序号'); process.exit(0); }

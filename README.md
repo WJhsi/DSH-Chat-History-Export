@@ -7,7 +7,7 @@ A native **Win32 desktop app** delivered as a single-file exe — no runtime ins
 
 Double-click `dist\dsh-chat-history-export.exe` to launch:
 
-- **Session list (left pane)**: automatically scans every session under `C:\Users\<you>\.dsh\sessions` (newest first). Click one to preview its transcript on the right in real time.
+- **Session list (left pane)**: automatically scans every session under `C:\Users\<you>\.dsh\sessions` (newest first). Each row shows the session's **topic**, ID and last-updated time; the topic matches what the DSH sidebar shows (the latest `session/title` event) and fills in progressively in the background. Click a session to preview its transcript on the right in real time.
 - **Export directory**: defaults to the exe's own folder. Pick a folder via the system folder picker ("Browse…") or type a path manually. Your choice is remembered in `dsh-chat-history-export.config.json` next to the exe — delete that file to restore the default.
 - **Export & Save**: writes `<session-ID>-transcript.md`, then offers to open the containing folder.
 - **Choose session file…**: manually pick a `session.jsonl` / `session.jsonl.zstd` file when the session is not in the default location.
