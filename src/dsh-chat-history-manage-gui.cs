@@ -1172,6 +1172,7 @@ namespace DshChatHistoryManage
 
         public RoundedButton()
         {
+            UseVisualStyleBackColor = false; // 自绘按钮必须关闭系统视觉背景，否则悬停时系统会叠加绘制
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
@@ -1179,6 +1180,11 @@ namespace DshChatHistoryManage
             BackColor = UiTheme.Window;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
                 | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs pevent)
+        {
+            pevent.Graphics.Clear(UiTheme.Window); // 确定性背景，避免系统叠加
         }
 
         protected override void OnMouseEnter(EventArgs e) { base.OnMouseEnter(e); hovered = true; Invalidate(); }
@@ -1199,8 +1205,11 @@ namespace DshChatHistoryManage
                     : (pressed ? UiTheme.Selection : hovered ? UiTheme.Hover : UiTheme.Panel);
                 using (SolidBrush br = new SolidBrush(bg))
                     e.Graphics.FillPath(br, path);
-                using (Pen pen = new Pen(Primary ? UiTheme.Accent : UiTheme.Border))
-                    e.Graphics.DrawPath(pen, path);
+                if (!Primary) // 主按钮不画边框，避免圆角处产生月牙形接缝
+                {
+                    using (Pen pen = new Pen(UiTheme.Border))
+                        e.Graphics.DrawPath(pen, path);
+                }
             }
             Color fg = Primary ? Color.White : ForeColor;
             TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, fg,
@@ -1234,7 +1243,7 @@ namespace DshChatHistoryManage
         public RoundedTextBox()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.UserPaint, true);
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
             // 与容器同色填充（不用透明背景，避免重绘残影）
             BackColor = UiTheme.Window;
             inner = new TextBox();
@@ -1244,6 +1253,11 @@ namespace DshChatHistoryManage
             inner.Font = new Font("Microsoft YaHei UI", 9.5f);
             Controls.Add(inner);
             LayoutInner();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs pevent)
+        {
+            pevent.Graphics.Clear(UiTheme.Window); // 确定性背景
         }
 
         protected override void OnResize(EventArgs e) { base.OnResize(e); LayoutInner(); }
@@ -1497,6 +1511,7 @@ namespace DshChatHistoryManage
             MinimumSize = new Size(Math.Min(1100, defW), Math.Min(640, defH));
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = UiTheme.Window;
+            DoubleBuffered = true; // 窗体级双缓冲，消除悬停重绘闪烁/残影
 
             TableLayoutPanel root = new TableLayoutPanel();
             root.Dock = DockStyle.Fill;
